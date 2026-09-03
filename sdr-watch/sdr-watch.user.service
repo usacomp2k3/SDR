@@ -1,0 +1,9 @@
+[Unit]
+Description=OBSOLETE — use system sdr-watch.timer (user timer races radiod)
+Documentation=file:///home/station/acars-hub/Architecture.md
+After=default.target
+
+[Service]
+Type=oneshot
+Nice=10
+ExecStart=/usr/bin/sg docker -c '/usr/bin/python3 /home/station/acars-hub/sdr-watch/sdr-watch.py'

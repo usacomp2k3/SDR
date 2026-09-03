@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aggregator status · WP-KMCO</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #141e30;
+      --border: #243049;
+      --text: #e8eef8;
+      --muted: #8b9bb8;
+      --accent: #3d9cf0;
+      --ok: #3ecf8e;
+      --quiet: #67e8f9;
+      --issue: #f0b429;
+      --down: #f07178;
+      --unknown: #8b9bb8;
+      --off: #5a6578;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1a3a5c 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #1a2a40 0%, transparent 50%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 3rem; }
+    header {
+      display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+      gap: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1.25rem;
+    }
+    h1 { margin: 0 0 0.35rem; font-size: 1.6rem; font-weight: 650; }
+    .sub { color: var(--muted); font-size: 0.95rem; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .nav { font-size: 0.9rem; }
+    .summary {
+      display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1.5rem;
+    }
+    .pill {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.4rem 0.75rem; border-radius: 999px;
+      background: var(--card); border: 1px solid var(--border);
+      font-size: 0.85rem; font-weight: 600;
+    }
+    .dot {
+      width: 0.55rem; height: 0.55rem; border-radius: 50%;
+      background: var(--unknown);
+    }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.quiet { background: var(--quiet); box-shadow: 0 0 8px var(--quiet); }
+    .dot.issue { background: var(--issue); box-shadow: 0 0 8px var(--issue); }
+    .dot.down { background: var(--down); box-shadow: 0 0 8px var(--down); }
+    .dot.unknown { background: var(--unknown); }
+    .dot.off { background: var(--off); }
+    tr.off td { opacity: 0.72; }
+    .filters {
+      display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;
+      margin-bottom: 1rem; font-size: 0.85rem; color: var(--muted);
+    }
+    .filters label { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 0.35rem; }
+    h2 {
+      margin: 1.75rem 0 0.65rem; font-size: 0.8rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); font-weight: 600;
+    }
+    table {
+      width: 100%; border-collapse: collapse; background: var(--card);
+      border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left; padding: 0.7rem 0.85rem;
+      border-bottom: 1px solid var(--border); vertical-align: top;
+    }
+    th {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--muted); font-weight: 600; background: #0f1728;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #1a2740; }
+    .status {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      font-weight: 650; text-transform: uppercase; font-size: 0.72rem;
+      letter-spacing: 0.04em;
+    }
+    .status.ok { color: var(--ok); }
+    .status.quiet { color: var(--quiet); }
+    .status.issue { color: var(--issue); }
+    .status.down { color: var(--down); }
+    .status.unknown { color: var(--unknown); }
+    .status.off { color: var(--off); }
+    .mode {
+      display: inline-block; font-size: 0.68rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 0.15rem 0.45rem; border-radius: 6px;
+      background: #1a3344; color: #67e8f9;
+    }
+    .detail { color: var(--muted); font-size: 0.82rem; margin-top: 0.15rem; }
+    .dest { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.78rem; color: var(--muted); }
+    .rate { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .err {
+      background: #3b1d2a; border: 1px solid #7f1d1d; color: #fecaca;
+      padding: 1rem; border-radius: 10px; margin-bottom: 1rem;
+    }
+    .meta { color: var(--muted); font-size: 0.8rem; margin-top: 1.5rem; }
+    .refresh { color: var(--muted); font-size: 0.85rem; }
+    button {
+      background: #1e3a5f; color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.4rem 0.75rem; cursor: pointer; font-size: 0.85rem;
+    }
+    button:hover { border-color: var(--accent); }
+    @media (max-width: 720px) {
+      .hide-sm { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Aggregator status</h1>
+        <p class="sub">
+          All outbound feeds · <span id="station">WP-KMCO</span>
+          · <span class="refresh" id="stamp">loading…</span>
+        </p>
+      </div>
+      <div class="nav">
+        <a href="/">← Station portal</a>
+        &nbsp;·&nbsp;
+        <a href="/sdr.html">SDR / USB</a>
+        &nbsp;·&nbsp;
+        <button type="button" id="reload">Refresh now</button>
+      </div>
+    </header>
+
+    <div id="error" class="err" style="display:none"></div>
+    <div class="summary" id="summary"></div>
+    <div class="filters">
+      <label><input type="checkbox" id="showOff" checked /> Show not configured (off)</label>
+      <label><input type="checkbox" id="activeOnly" /> Active only (hide off)</label>
+    </div>
+    <div id="tables"></div>
+    <p class="meta" id="meta"></p>
+  </div>
+
+  <script>
+    const MODE_ORDER = [
+      "ACARS", "VDL2", "HFDL", "Iridium", "AIS", "Radiosonde",
+      "ADS-B RF", "ADS-B",
+    ];
+    let lastData = null;
+
+    async function load() {
+      const err = document.getElementById("error");
+      err.style.display = "none";
+      try {
+        let r = await fetch("/api/status", { cache: "no-store" });
+        if (!r.ok) {
+          r = await fetch(`http://${location.hostname || "127.0.0.1"}:8881/api/status`, { cache: "no-store" });
+        }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        lastData = await r.json();
+        render(lastData);
+      } catch (e) {
+        err.style.display = "block";
+        err.textContent =
+          "Could not load status API (" + e.message + "). " +
+          "Is status-api running? docker compose -f docker-compose.portal.yml up -d";
+      }
+    }
+
+    function render(data) {
+      document.getElementById("station").textContent = data.station || "WP-KMCO";
+      const when = data.generated_at ? new Date(data.generated_at) : new Date();
+      document.getElementById("stamp").textContent =
+        "updated " + when.toLocaleString() +
+        (data.elapsed_ms != null ? ` · probe ${data.elapsed_ms} ms` : "");
+
+      const s = data.summary || {};
+      document.getElementById("summary").innerHTML = ["ok", "quiet", "issue", "down", "unknown", "off"]
+        .map((k) => {
+          const n = s[k] || 0;
+          return `<span class="pill"><span class="dot ${k}"></span>${n} ${k}</span>`;
+        })
+        .join("");
+
+      const showOff = document.getElementById("showOff").checked;
+      const activeOnly = document.getElementById("activeOnly").checked;
+      const hideOff = activeOnly || !showOff;
+
+      const byMode = {};
+      for (const it of data.items || []) {
+        if (hideOff && it.status === "off") continue;
+        (byMode[it.mode] ||= []).push(it);
+      }
+
+      const modes = [
+        ...MODE_ORDER.filter((m) => byMode[m]),
+        ...Object.keys(byMode).filter((m) => !MODE_ORDER.includes(m)),
+      ];
+
+      document.getElementById("tables").innerHTML = modes
+        .map((mode) => {
+          const rows = byMode[mode]
+            .map((it) => {
+              const name = it.link
+                ? `<a href="${it.link}" target="_blank" rel="noopener">${esc(it.name)}</a>`
+                : esc(it.name);
+              const trClass = it.status === "off" ? " class=\"off\"" : "";
+              return `<tr${trClass}>
+                <td>
+                  <div>${name}</div>
+                  <div class="dest">${esc(it.destination || "")}</div>
+                  <div class="detail">${esc(it.detail || "")}</div>
+                </td>
+                <td><span class="status ${esc(it.status)}"><span class="dot ${esc(it.status)}"></span>${esc(it.status)}</span></td>
+                <td class="rate hide-sm">${esc(it.rate || "—")}</td>
+                <td class="hide-sm"><code>${esc(it.container || "—")}</code></td>
+              </tr>`;
+            })
+            .join("");
+          return `
+            <h2>${esc(mode)}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Feeder / destination</th>
+                  <th>Status</th>
+                  <th class="hide-sm">Rate / load</th>
+                  <th class="hide-sm">Container</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>`;
+        })
+        .join("");
+
+      document.getElementById("meta").textContent =
+        "ok = feeding. quiet = path is up, no messages in the last minute (idle band or just restarted). " +
+        "issue = something needs attention. down = not running / not connected. off = not configured. " +
+        "Airframes uses local hub rate, not Airframes' own dashboard. Auto-refresh every 30s.";
+    }
+
+    document.getElementById("showOff").addEventListener("change", () => {
+      if (document.getElementById("showOff").checked) {
+        document.getElementById("activeOnly").checked = false;
+      }
+      if (lastData) render(lastData);
+    });
+    document.getElementById("activeOnly").addEventListener("change", () => {
+      if (document.getElementById("activeOnly").checked) {
+        document.getElementById("showOff").checked = false;
+      }
+      if (lastData) render(lastData);
+    });
+
+    function esc(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    document.getElementById("reload").addEventListener("click", load);
+    load();
+    setInterval(load, 30000);
+  </script>
+</body>
+</html>

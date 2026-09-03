@@ -1,0 +1,15 @@
+# WP-KMCO: station user can bounce the VHF mux without a password.
+# refresh_all_the_things.sh drops to $SUDO_USER after apt; [1c] uses sudo -n.
+# Filename in /etc/sudoers.d must not contain a dot.
+Cmnd_Alias VHF_R2 = \
+  /usr/bin/systemctl start vhf-r2-radiod.service, \
+  /usr/bin/systemctl start vhf-r2-decode.service, \
+  /usr/bin/systemctl start vhf-r2-radiod.service vhf-r2-decode.service, \
+  /usr/bin/systemctl restart vhf-r2-radiod.service, \
+  /usr/bin/systemctl restart vhf-r2-decode.service, \
+  /usr/bin/systemctl restart vhf-r2-radiod.service vhf-r2-decode.service, \
+  /usr/bin/systemctl stop vhf-r2-radiod.service, \
+  /usr/bin/systemctl stop vhf-r2-decode.service, \
+  /usr/bin/systemctl stop vhf-r2-decode.service vhf-r2-radiod.service, \
+  /usr/bin/systemctl stop vhf-r2-radiod.service vhf-r2-decode.service
+station ALL=(root) NOPASSWD: VHF_R2

@@ -1,0 +1,8 @@
+[Unit]
+Description=Load RX888 MK2 FX3 firmware (RAM)
+Documentation=file:///home/station/acars-hub/rx888/README.md
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rx888-load-firmware
+TimeoutStartSec=30

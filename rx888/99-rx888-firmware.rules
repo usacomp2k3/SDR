@@ -1,0 +1,2 @@
+# RX888 MK2: when FX3 bootloader appears, load SDDC firmware via systemd
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="04b4", ATTR{idProduct}=="00f3", TAG+="systemd", ENV{SYSTEMD_WANTS}="rx888-firmware.service"

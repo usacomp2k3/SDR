@@ -1,0 +1,57 @@
+# WP-KMCO reference tree — not an installer.
+# Keep runtime, secrets, and the home pin off GitHub.
+
+# ── secrets / site pin (committed copies are *.example) ──
+.env
+rx888/ham/ham.env
+radiosonde/station.cfg
+
+# ── decoder / feeder runtime ──
+acars_data/
+ais-data/
+irdm-logs/
+hfdl-data/
+hfdl-scanner/
+radiosonde/log/
+portal/map-data/
+portal/atc-stats.json
+adsb/ultrafeeder/globe_history/
+adsb/ultrafeeder/graphs1090/
+adsb/dump978/
+adsb/pi-pull/
+vhf-r2/run/
+
+# RX888 runtime, but keep the ka9q / dumphfdl confs people actually read
+rx888/run/**
+!rx888/run/radiod-hfdl.conf
+!rx888/run/hfdl.conf
+!rx888/run/systable.conf
+rx888/opt/
+rx888/run/ham/
+
+# ── upstream clones (link out; do not vendor) ──
+rx888/ka9q-radio/
+rx888/rx888_tools/
+rx888/src/ft8_lib/
+rx888/src/ftlib-pskreporter/
+irdm/libacars-src/
+
+# ── vendor blobs ──
+*.zip
+host/renesas_usb_fw.mem
+rx888/rx888_tools/firmware/*.img
+rx888/ka9q-radio/share/*.img
+
+# ── noise ──
+*.log
+*.db
+*.sqlite
+*.sqlite-*
+*.pid
+*.pyc
+__pycache__/
+*.nohup
+wisdom
+wisdom-file
+.DS_Store
+*~

@@ -1,0 +1,16 @@
+#!/bin/bash
+# Load ringof SDDC_FX3 firmware into RX888 MK2 FX3 RAM (lost on unplug).
+set -euo pipefail
+_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_HUB="$(cd "$_HERE/.." && pwd)"
+FW="${RX888_FW:-/usr/local/share/rx888_tools/firmware/SDDC_FX3.img}"
+if [[ ! -r $FW ]]; then
+  FW=$_HUB/rx888/rx888_tools/firmware/SDDC_FX3.img
+fi
+export PATH="/usr/local/bin:$_HUB/rx888/rx888_tools:/usr/bin:/bin"
+sleep 1
+if lsusb -d 04b4:00f1 >/dev/null 2>&1 && ! lsusb -d 04b4:00f3 >/dev/null 2>&1; then
+  echo "RX888 already in app mode (04b4:00f1)"
+  exec fx3_cmd test
+fi
+exec fx3_cmd load "$FW"

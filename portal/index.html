@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WP-KMCO Station</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #141e30;
+      --card-hover: #1a2740;
+      --border: #243049;
+      --text: #e8eef8;
+      --muted: #8b9bb8;
+      --accent: #3d9cf0;
+      --green: #3ecf8e;
+      --amber: #f0b429;
+      --purple: #a78bfa;
+      --red: #f07178;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1a3a5c 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #1a2a40 0%, transparent 50%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 3rem;
+    }
+    header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.75rem;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .host {
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      color: var(--accent);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0.9rem;
+    }
+    a.card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.1rem 1.15rem;
+      transition: background 0.15s, border-color 0.15s, transform 0.12s;
+    }
+    a.card:hover {
+      background: var(--card-hover);
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      margin-bottom: 0.55rem;
+    }
+    .b-acars { background: #1e3a5f; color: #7ec8ff; }
+    .b-sat { background: #2a1f4d; color: #c4b5fd; }
+    .b-hf { background: #3d2e12; color: #fcd34d; }
+    .b-ship { background: #12352a; color: #6ee7b7; }
+    .b-wx { background: #3b1d2a; color: #f9a8d4; }
+    .b-adsb { background: #1a3344; color: #67e8f9; }
+    .b-sys { background: #2d2d2d; color: #d4d4d4; }
+    .title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .desc {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.65rem;
+    }
+    .url {
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      font-size: 0.8rem;
+      color: var(--accent);
+      word-break: break-all;
+    }
+    h2 {
+      margin: 2rem 0 0.75rem;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    footer {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>WP-KMCO Station</h1>
+      <p class="sub">
+        Local dashboards on
+        <span class="host" id="host">…</span>
+        · station portal
+      </p>
+    </header>
+
+    <h2>Receivers</h2>
+    <div class="grid" id="receivers"></div>
+
+    <h2>System</h2>
+    <div class="grid" id="system"></div>
+
+    <footer>
+      Links use this host’s address so they work on LAN and Tailscale.
+      Generated for the WP-KMCO multi-SDR station.
+    </footer>
+  </div>
+
+  <script>
+    const host = location.hostname || "127.0.0.1";
+    document.getElementById("host").textContent = host;
+
+    const sites = {
+      receivers: [
+        {
+          badge: "ACARS Hub",
+          badgeClass: "b-acars",
+          title: "ACARS Hub",
+          desc: "Live ACARS · VDL2 · HFDL · Iridium messages",
+          port: 8080,
+          path: "/",
+        },
+        {
+          badge: "Iridium",
+          badgeClass: "b-sat",
+          title: "Iridium beam map",
+          desc: "Satellite beams over the station",
+          port: 8888,
+          path: "/",
+        },
+        {
+          badge: "Iridium",
+          badgeClass: "b-sat",
+          title: "Iridium MT map",
+          desc: "Mobile terminal / heatmap views",
+          port: 8889,
+          path: "/",
+        },
+        {
+          badge: "ADS-B",
+          badgeClass: "b-adsb",
+          title: "tar1090 / Ultrafeeder",
+          desc: "1090 + 978 map · graphs · WinterPark feeder",
+          port: 8085,
+          path: "/",
+        },
+        {
+          badge: "ADS-B",
+          badgeClass: "b-adsb",
+          title: "graphs1090",
+          desc: "Message rate, range, signal history",
+          port: 8085,
+          path: "/graphs1090/",
+        },
+        {
+          badge: "ADS-B",
+          badgeClass: "b-adsb",
+          title: "UAT 978 skyaware",
+          desc: "dump978 UAT map",
+          port: 9780,
+          path: "/",
+        },
+        {
+          badge: "ADS-B",
+          badgeClass: "b-adsb",
+          title: "ADSB Vue",
+          desc: "3D coverage / history volume",
+          port: 24556,
+          path: "/",
+        },
+        {
+          badge: "AIS",
+          badgeClass: "b-ship",
+          title: "AIS-Catcher / Shipfeeder",
+          desc: "Marine traffic · WP-KMCO-AIS",
+          port: 8090,
+          path: "/",
+        },
+        {
+          badge: "Sonde",
+          badgeClass: "b-wx",
+          title: "Radiosonde Auto-RX",
+          desc: "Weather balloon scan & SondeHub · WP-KMCO-SONDE",
+          port: 5000,
+          path: "/",
+        },
+        {
+          badge: "HF",
+          badgeClass: "b-hf",
+          title: "HF ham skimmer",
+          desc: "FT8 · FT4 · WSPR spots from the RX888 (with HFDL)",
+          port: 8880,
+          path: "/hf.html",
+          sameTab: true,
+        },
+      ],
+      system: [
+        {
+          badge: "Map",
+          badgeClass: "b-adsb",
+          title: "Unified coverage map",
+          desc: "All modes on one map · range rings · heat + layers",
+          port: 8880,
+          path: "/map.html",
+          sameTab: true,
+        },
+        {
+          badge: "Status",
+          badgeClass: "b-sys",
+          title: "Aggregator status",
+          desc: "All outbound feeds · ACARS · ADS-B · AIS · Sonde",
+          port: 8880,
+          path: "/status.html",
+          sameTab: true,
+        },
+        {
+          badge: "SDR",
+          badgeClass: "b-sys",
+          title: "SDR / USB status",
+          desc: "Radios · hubs · GPS · USB tree · usbfs",
+          port: 8880,
+          path: "/sdr.html",
+          sameTab: true,
+        },
+        {
+          badge: "Mesh",
+          badgeClass: "b-sat",
+          title: "MeshMonitor",
+          desc: "Meshtastic repeater · nodes · telemetry · map",
+          port: 3001,
+          path: "/",
+        },
+      ],
+    };
+
+    function render(sectionId, items) {
+      const el = document.getElementById(sectionId);
+      el.innerHTML = items
+        .map((s) => {
+          const url = `http://${host}:${s.port}${s.path}`;
+          const target = s.sameTab ? "" : ' target="_blank" rel="noopener"';
+          return `
+            <a class="card" href="${url}"${target}>
+              <div class="badge ${s.badgeClass}">${s.badge}</div>
+              <div class="title">${s.title}</div>
+              <div class="desc">${s.desc}</div>
+              <div class="url">${url}</div>
+            </a>`;
+        })
+        .join("");
+    }
+
+    render("receivers", sites.receivers);
+    render("system", sites.system);
+  </script>
+</body>
+</html>

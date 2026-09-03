@@ -1,0 +1,355 @@
+# ADS-B / UAT feeder — migrated from adsb.im WinterPark Pi
+# Hardware: Airspy Mini (1090) + RTL serial 978 (UAT)
+#
+# Standalone:
+#   docker compose -f docker-compose.adsb.yml up -d
+# With full station (refresh_all_the_things.sh includes this overlay):
+#   docker compose -f docker-compose.yml ... -f docker-compose.adsb.yml up -d
+#
+# IMPORTANT: Stop the Pi feeders before enabling outbound feeds here (same keys).
+# tar1090 is on host :8085 (acarshub owns :8080).
+
+services:
+  airspy_adsb:
+    image: ghcr.io/sdr-enthusiasts/airspy_adsb:latest
+    container_name: airspy_adsb
+    hostname: airspy_adsb
+    restart: unless-stopped
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - AIRSPY_ADSB_SERIAL=${AIRSPY_ADSB_SERIAL:-0x10A862DC34914863}
+      - AIRSPY_ADSB_RF_GAIN=${AIRSPY_ADSB_GAIN:-auto}
+      # Desktop CPU: 20 MS/s + aggressive preamble (Pi-style 12/20 defaults were conservative)
+      - AIRSPY_ADSB_SAMPLE_RATE=${AIRSPY_ADSB_SAMPLE_RATE:-20}
+      - AIRSPY_ADSB_TIMEOUT=120
+      - AIRSPY_ADSB_CPUTIME_TARGET=95
+      - AIRSPY_ADSB_PREAMBLE_FILTER_MAX=60
+      - AIRSPY_ADSB_PREAMBLE_FILTER_NONCRC=5
+      - AIRSPY_ADSB_DX_MODE=${AIRSPY_ADSB_DX_MODE:-true}
+      - AIRSPY_ADSB_FEC_BITS=${AIRSPY_ADSB_FEC_BITS:-2}
+      - AIRSPY_ADSB_STATS=true
+      - AIRSPY_ADSB_VERBOSE=false
+      - AIRSPY_ADSB_BIAS_TEE=
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb:rw
+      - /etc/localtime:/etc/localtime:ro
+    tmpfs:
+      - /run:exec,size=512M
+      - /tmp:size=256M
+      - /var/log:size=64M
+
+  dump978:
+    image: ghcr.io/sdr-enthusiasts/docker-dump978:latest
+    container_name: dump978
+    hostname: dump978
+    restart: unless-stopped
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    ports:
+      - "${UAT978_PORT:-9780}:80"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - LAT=${ADSB_LAT}
+      - LON=${ADSB_LON}
+      - DUMP978_DEVICE_TYPE=rtlsdr
+      - DUMP978_RTLSDR_DEVICE=${UAT_RTL_SERIAL:-978}
+      - DUMP978_SDR_GAIN=${UAT_SDR_GAIN:-autogain}
+      - DUMP978_SDR_PPM=${UAT_SDR_PPM:-0}
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb:rw
+      - ./adsb/dump978:/var/globe_history
+      - /etc/localtime:/etc/localtime:ro
+    tmpfs:
+      - /run:exec,size=256M
+      - /tmp:size=128M
+
+  ultrafeeder:
+    image: ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest
+    container_name: ultrafeeder
+    hostname: ultrafeeder
+    restart: unless-stopped
+    depends_on:
+      - airspy_adsb
+      - dump978
+    ports:
+      - "${ADSB_TAR1090_PORT:-8085}:80"
+      - "${ADSB_BEAST_PORT:-30005}:30005"
+      - "${ADSB_BEAST_IN_PORT:-30004}:30004"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - LOGLEVEL=${ADSB_LOGLEVEL:-error}
+      # Net-only: 1090 comes from airspy_adsb; 978 from dump978
+      - READSB_NET_ONLY=true
+      - READSB_LAT=${ADSB_LAT}
+      - READSB_LON=${ADSB_LON}
+      - READSB_ALT=${ADSB_ALT_M:-32}m
+      - READSB_RX_LOCATION_ACCURACY=2
+      - READSB_STATS_RANGE=true
+      # Desktop: wider decode range + denser history (NVMe + 62 GiB RAM)
+      - READSB_MAX_RANGE=${ADSB_MAX_RANGE:-450}
+      - READSB_RANGE_OUTLINE_HOURS=48
+      - READSB_HEATMAP_INTERVAL=5
+      - READSB_JSON_INTERVAL=0.5
+      - READSB_JSON_TRACE_INTERVAL=5
+      - READSB_ENABLE_HEATMAP=true
+      - READSB_ENABLE_TRACES=true
+      - READSB_ENABLE_API=true
+      # tar1090 is the real-time map. Image default 720 min (12h) leaves stale ADS-C
+      # ghosts; ACARS Hub's own message map is independent and still holds history.
+      - READSB_JAERO_TIMEOUT=15
+      - READSB_EXTRA_ARGS=--write-json-globe-index --tar1090-use-api
+      - MAX_GLOBE_HISTORY=${MAX_GLOBE_HISTORY:-365}
+      - MLAT_STARTUP_STAGGER=3
+      - UUID=${ULTRAFEEDER_UUID:-3f421ab1-c81a-4da4-a2b5-6d203328ee12}
+      - MLAT_USER=${MLAT_SITE_NAME:-WinterPark}
+      - UPDATE_TAR1090=true
+      - TAR1090_MESSAGERATEINTITLE=true
+      - TAR1090_PAGETITLE=${MLAT_SITE_NAME:-WinterPark}
+      - TAR1090_PLANECOUNTINTITLE=true
+      - TAR1090_ENABLE_AC_DB=true
+      - TAR1090_FLIGHTAWARELINKS=true
+      - TAR1090_SITESHOW=true
+      - TAR1090_RANGE_OUTLINE_COLORED_BY_ALTITUDE=true
+      - TAR1090_RANGE_OUTLINE_WIDTH=2.0
+      - TAR1090_USEROUTEAPI=true
+      # Carto raster tiles now watermark "API KEY REQUIRED"; OpenFreeMap Dark is keyless.
+      - TAR1090_MAPTYPE_TAR1090=OpenFreeMapDark
+      - "TAR1090_CONFIGJS_APPEND=try { var _mt = loStore && loStore['MapType_tar1090']; if (_mt && String(_mt).indexOf('carto') === 0) loStore['MapType_tar1090'] = 'OpenFreeMapDark'; } catch (e) {}"
+      # ── graphs1090: no SD-card IO thrift (continuous RRD writes to NVMe) ──
+      - GRAPHS1090_DARKMODE=true
+      - GRAPHS1090_REDUCE_IO=false
+      - GRAPHS1090_RRD_STEP=30
+      - GRAPHS1090_SIZE=large
+      - GRAPHS1090_ALL_LARGE=yes
+      - GRAPHS1090_MAX_MESSAGES_LINE=true
+      - GRAPHS1090_DISK_DEVICE=nvme0n1
+      # Container sees host WAN as eth0 (bridge). Host name is eno1; wlp82s0 was old laptop Wi‑Fi.
+      - GRAPHS1090_ETHERNET_DEVICE=eth0
+      # thermal_zone0 is acpitz (stuck ~27.8°C). zone2 = x86_pkg_temp (real package temp).
+      - GRAPHS1090_CPU_TEMP=/sys/class/thermal/thermal_zone2/temp
+      - GRAPHS1090_RANGE_INCLUDE_NONADSB=true
+      - ENABLE_978=yes
+      - URL_978=http://dump978/skyaware978
+      # Airspy graphs: stats live in airspy_adsb container (not ultrafeeder /run)
+      - ENABLE_AIRSPY=true
+      - URL_AIRSPY=http://airspy_adsb
+      # Ingest + community feeds (UUIDs match WinterPark / adsb.im backup)
+      - ULTRAFEEDER_CONFIG=${ULTRAFEEDER_CONFIG}
+    volumes:
+      - ./adsb/ultrafeeder/globe_history:/var/globe_history
+      - ./adsb/ultrafeeder/graphs1090:/var/lib/collectd
+      # Hide dump1090 CPU + Misc (RTL gain) tiles; Airspy has its own gain graphs
+      - ./adsb/ultrafeeder/09-hide-adsb-cpu-misc:/etc/s6-overlay/startup.d/09-hide-adsb-cpu-misc:ro
+      - /proc/diskstats:/proc/diskstats:ro
+      - /sys/class/thermal:/sys/class/thermal:ro
+      - /etc/localtime:/etc/localtime:ro
+    tmpfs:
+      - /run:exec,size=1G
+      - /tmp:size=512M
+      - /var/log:size=256M
+
+  # Datalink positions (ADS-C / ACARS POS) → tar1090 green ADS-C icons.
+  # Must hit JAERO SBS :32009, never beast :30004 (that would leak into ADS-B feeds).
+  acars2pos:
+    image: ghcr.io/rpatel3001/docker-acars2pos:latest
+    container_name: acars2pos
+    hostname: acars2pos
+    restart: unless-stopped
+    depends_on:
+      - acars_router
+      - ultrafeeder
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - JSON_IN=acars_router:15550;acars_router:15555;acars_router:15556;acars_router:15558
+      - SBS_OUT=ultrafeeder:32009
+      - LAT=${ADSB_LAT}
+      - LON=${ADSB_LON}
+      - MAX_DIST=0
+    tmpfs:
+      - /tmp:size=64M
+
+  # ── Commercial / account-based feeders (keys in .env from WinterPark backup) ──
+
+  piaware:
+    image: ghcr.io/sdr-enthusiasts/docker-piaware:latest
+    container_name: piaware
+    hostname: piaware
+    restart: unless-stopped
+    depends_on:
+      - ultrafeeder
+      - dump978
+    ports:
+      - "${PIAWARE_MAP_PORT:-8081}:8080"
+      - "${PIAWARE_STAT_PORT:-8082}:80"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - BEASTHOST=ultrafeeder
+      - BEASTPORT=30005
+      - FEEDER_ID=${FEEDER_PIAWARE_FEEDER_ID}
+      - LAT=${ADSB_LAT}
+      - LONG=${ADSB_LON}
+      - ALLOW_MLAT=yes
+      - MLAT_RESULTS=yes
+      - MLAT_RESULTS_BEASTHOST=ultrafeeder
+      - MLAT_RESULTS_BEASTPORT=31004
+      - UAT_RECEIVER_TYPE=relay
+      - UAT_RECEIVER_HOST=dump978
+    tmpfs:
+      - /run:exec,size=64M
+
+  fr24feed:
+    image: ghcr.io/sdr-enthusiasts/docker-flightradar24:latest
+    container_name: fr24feed
+    hostname: fr24feed
+    restart: unless-stopped
+    depends_on:
+      - ultrafeeder
+      - dump978
+    ports:
+      - "${FR24_PORT:-8754}:8754"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - BEASTHOST=ultrafeeder
+      - BEASTPORT=30005
+      - FR24KEY=${FEEDER_FR24_SHARING_KEY}
+      - FR24KEY_UAT=${FEEDER_FR24_UAT_SHARING_KEY}
+      - UATHOST=dump978
+      - UATPORT=30978
+      - MLAT=no
+    tmpfs:
+      - /run:exec,size=64M
+
+  rbfeeder:
+    image: ghcr.io/sdr-enthusiasts/docker-airnavradar:latest
+    container_name: rbfeeder
+    hostname: rbfeeder
+    restart: unless-stopped
+    depends_on:
+      - ultrafeeder
+      - dump978
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - BEASTHOST=ultrafeeder
+      - BEASTPORT=30005
+      - UAT_RECEIVER_HOST=dump978
+      - LAT=${ADSB_LAT}
+      - LONG=${ADSB_LON}
+      - ALT=${ADSB_ALT_M:-32}
+      - SHARING_KEY=${FEEDER_RADARBOX_SHARING_KEY}
+      - UAT_RECEIVER_PORT=30979
+      # Pin a known-good AirNav ingest (US from Florida). Documented SDR-E workaround.
+      - RB_SERVER=true
+      - ENABLE_MLAT=true
+      - MLAT_RESULTS_BEASTHOST=ultrafeeder
+      - MLAT_RESULTS_BEASTPORT=31004
+    tmpfs:
+      - /run:exec,size=64M
+      - /var/log
+
+  opensky:
+    image: ghcr.io/sdr-enthusiasts/docker-opensky-network:latest
+    container_name: opensky
+    hostname: opensky
+    restart: unless-stopped
+    depends_on:
+      - ultrafeeder
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - BEASTHOST=ultrafeeder
+      - BEASTPORT=30005
+      - LAT=${ADSB_LAT}
+      - LONG=${ADSB_LON}
+      - ALT=${ADSB_ALT_M:-32}
+      - OPENSKY_USERNAME=${FEEDER_OPENSKY_USERNAME}
+      - OPENSKY_SERIAL=${FEEDER_OPENSKY_SERIAL}
+    tmpfs:
+      - /run:exec,size=64M
+
+  planefinder:
+    image: ghcr.io/sdr-enthusiasts/docker-planefinder:latest
+    container_name: planefinder
+    hostname: planefinder
+    restart: unless-stopped
+    depends_on:
+      - ultrafeeder
+    ports:
+      - "${PLANEFINDER_PORT:-30053}:30053"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - BEASTHOST=ultrafeeder
+      - BEASTPORT=30005
+      - LAT=${ADSB_LAT}
+      - LONG=${ADSB_LON}
+      - SHARECODE=${FEEDER_PLANEFINDER_SHARECODE}
+    tmpfs:
+      - /run:exec,size=64M
+      - /var/log
+
+  planewatch:
+    image: ghcr.io/plane-watch/docker-plane-watch:latest
+    container_name: planewatch
+    hostname: planewatch
+    restart: unless-stopped
+    depends_on:
+      - ultrafeeder
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - BEASTHOST=ultrafeeder
+      - BEASTPORT=30005
+      - API_KEY=${FEEDER_PLANEWATCH_API_KEY}
+      - LAT=${ADSB_LAT}
+      - LONG=${ADSB_LON}
+      - ALT=${ADSB_ALT_M:-32}m
+      - ENABLE_MLAT=true
+    tmpfs:
+      - /run:exec,size=64M
+      - /var/log
+
+  adsbhub:
+    image: ghcr.io/sdr-enthusiasts/docker-adsbhub:latest
+    container_name: adsbhub
+    hostname: adsbhub
+    restart: unless-stopped
+    depends_on:
+      - ultrafeeder
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - SBSHOST=ultrafeeder
+      - SBSPORT=30003
+      - LAT=${ADSB_LAT}
+      - LONG=${ADSB_LON}
+      # Key starts with # and has YAML-sensitive chars — quote the whole assignment.
+      - "CLIENTKEY=${FEEDER_ADSBHUB_STATION_KEY}"
+    tmpfs:
+      - /run:exec,size=64M
+
+  sdrmap:
+    image: ghcr.io/sdr-enthusiasts/docker-sdrmap:latest
+    container_name: sdrmap
+    hostname: sdrmap
+    restart: unless-stopped
+    depends_on:
+      - ultrafeeder
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - BEASTHOST=ultrafeeder
+      - BEASTPORT=30005
+      - LAT=${ADSB_LAT}
+      - LON=${ADSB_LON}
+      - ALT=${ADSB_ALT_M:-32}
+      - SMUSERNAME=${FEEDER_SDRMAP_USERNAME}
+      - "SMPASSWORD=${FEEDER_SDRMAP_PASSWORD}"
+      - SEND_SYSINFO=true
+      - MLAT=true
+      - MLAT_PRIVACY=false
+      - MLAT_RESULTS=beast,connect,ultrafeeder:31004
+    volumes:
+      # auto_rx JSON logs → sdrmap radiosonde feed (same dir radiosonde_auto_rx writes)
+      - ./radiosonde/log:/opt/radiosonde
+      - /etc/localtime:/etc/localtime:ro
+    tmpfs:
+      - /tmp:size=64M
+      - /run:exec,size=64M
+      - /var/log:size=32M

@@ -1,0 +1,11 @@
+[Unit]
+Description=WP-KMCO SDR watchdog (reopen decoders after USB reset)
+Documentation=file:///home/station/acars-hub/Architecture.md
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+Nice=10
+TimeoutStartSec=180
+ExecStart=/usr/bin/python3 /home/station/acars-hub/sdr-watch/sdr-watch.py

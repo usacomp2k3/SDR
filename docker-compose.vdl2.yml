@@ -1,0 +1,40 @@
+# Legacy USB dumpvdl2 — parked. Live VDL2 is host ka9q + dumpvdl2
+# (UDP to acars_router:5555). Do not start without --profile legacy-usb.
+
+services:
+  acars_router:
+    environment:
+      - AR_RECV_ZMQ_VDLM2=dumpvdl2:45555
+
+  dumpvdl2:
+    image: ghcr.io/sdr-enthusiasts/docker-dumpvdl2:latest
+    container_name: dumpvdl2
+    profiles: ["legacy-usb"]
+    restart: "no"
+    depends_on:
+      - acars_router
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - QUIET_LOGS=false
+      - RTL_SERIAL=${VDL2_RTL_SERIAL:-}
+      - SOAPYSDR=${VDL2_SOAPYSDR:-}
+      # dumpvdl2 has no true AGC; use high manual gain for RTL (e.g. 49.6)
+      - GAIN=${VDL2_GAIN:-49.6}
+      # Higher oversample = better VDL decode (105k×20 = 2.1 MS/s)
+      - OVERSAMPLE=${VDL2_OVERSAMPLE:-20}
+      - PPM=0
+      # External bias injectors — never enable dongle bias-T
+      - BIASTEE=false
+      - FREQUENCIES=${VDL2_FREQUENCIES:-136650000 136725000 136800000 136900000 136925000 136975000}
+      - FEED_ID=${STATION_ID:-WP-KMCO}-VDL2
+      - VDLM_FILTER_ENABLE=true
+      - ZMQ_MODE=server
+      - ZMQ_ENDPOINT=tcp://0.0.0.0:45555
+    tmpfs:
+      - /run:exec,size=512M
+      - /var/log:size=512M
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb:ro
+      - /dev:/dev:ro

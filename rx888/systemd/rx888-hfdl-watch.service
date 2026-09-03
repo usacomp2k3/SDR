@@ -1,0 +1,7 @@
+[Unit]
+Description=WP-KMCO RX888 HFDL watchdog (usbfs + idle radiod)
+After=rx888-radiod.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/station/acars-hub/rx888/health-fix.sh

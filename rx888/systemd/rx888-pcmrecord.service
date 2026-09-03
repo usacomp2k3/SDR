@@ -1,0 +1,22 @@
+[Unit]
+Description=WP-KMCO HFDL pcmrecord → dumphfdl farm
+Documentation=file:///home/station/acars-hub/rx888/README.md
+After=rx888-radiod.service docker.service
+Requires=rx888-radiod.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=station
+Group=station
+WorkingDirectory=/home/station/acars-hub/rx888
+Environment=LD_LIBRARY_PATH=/home/station/acars-hub/rx888/opt/lib
+Environment=PATH=/home/station/acars-hub/rx888/opt/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/station/acars-hub/rx888/run-pcmrecord.sh
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

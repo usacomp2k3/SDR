@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SDR / USB status · WP-KMCO</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #141e30;
+      --border: #243049;
+      --text: #e8eef8;
+      --muted: #8b9bb8;
+      --accent: #3d9cf0;
+      --ok: #3ecf8e;
+      --quiet: #67e8f9;
+      --issue: #f0b429;
+      --down: #f07178;
+      --unknown: #8b9bb8;
+      --off: #5a6578;
+      --empty: #5a6578;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1a3a5c 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #1a2a40 0%, transparent 50%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 3rem; }
+    header {
+      display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+      gap: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1.25rem;
+    }
+    h1 { margin: 0 0 0.35rem; font-size: 1.6rem; font-weight: 650; }
+    .sub { color: var(--muted); font-size: 0.95rem; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .nav { font-size: 0.9rem; }
+    .summary { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1.25rem; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.4rem 0.75rem; border-radius: 999px;
+      background: var(--card); border: 1px solid var(--border);
+      font-size: 0.85rem; font-weight: 600;
+    }
+    .dot {
+      width: 0.55rem; height: 0.55rem; border-radius: 50%;
+      background: var(--unknown);
+    }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.quiet { background: var(--quiet); box-shadow: 0 0 8px var(--quiet); }
+    .dot.issue { background: var(--issue); box-shadow: 0 0 8px var(--issue); }
+    .dot.down { background: var(--down); box-shadow: 0 0 8px var(--down); }
+    .dot.unknown { background: var(--unknown); }
+    .dot.off, .dot.empty { background: var(--off); }
+    tr.off td { opacity: 0.72; }
+    h2 {
+      margin: 1.75rem 0 0.65rem; font-size: 0.8rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); font-weight: 600;
+    }
+    table {
+      width: 100%; border-collapse: collapse; background: var(--card);
+      border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left; padding: 0.28rem 0.6rem;
+      border-bottom: 1px solid var(--border); vertical-align: top;
+    }
+    th {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--muted); font-weight: 600; background: #0f1728;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #1a2740; }
+    .status {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      font-weight: 650; text-transform: uppercase; font-size: 0.72rem;
+      letter-spacing: 0.04em;
+    }
+    .status.ok { color: var(--ok); }
+    .status.quiet { color: var(--quiet); }
+    .status.issue { color: var(--issue); }
+    .status.down { color: var(--down); }
+    .status.unknown { color: var(--unknown); }
+    .status.off, .status.empty { color: var(--off); }
+    .detail { color: var(--muted); font-size: 0.82rem; margin-top: 0.15rem; }
+    .mono { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.78rem; color: var(--muted); }
+    .err {
+      background: #3b1d2a; border: 1px solid #7f1d1d; color: #fecaca;
+      padding: 1rem; border-radius: 10px; margin-bottom: 1rem;
+    }
+    .hostbox {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 0.5rem;
+      font-size: 0.88rem;
+    }
+    .hostbox .kv { color: var(--muted); font-size: 0.82rem; margin-top: 0.35rem; }
+    .meta { color: var(--muted); font-size: 0.8rem; margin-top: 1.5rem; }
+    .refresh { color: var(--muted); font-size: 0.85rem; }
+    button {
+      background: #1e3a5f; color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.4rem 0.75rem; cursor: pointer; font-size: 0.85rem;
+    }
+    button:hover { border-color: var(--accent); }
+    table.usb-tree th, table.usb-tree td {
+      border-right: 1px solid var(--border);
+    }
+    table.usb-tree th:last-child, table.usb-tree td:last-child { border-right: none; }
+    table.usb-tree td { vertical-align: middle; }
+    table.usb-tree td.merged { font-weight: 650; background: #101a2c; }
+    table.usb-tree td.hubcol { color: var(--muted); font-size: 0.82rem; }
+    .badge {
+      display: inline-block; font-size: 0.65rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 0.08rem 0.4rem; border-radius: 5px; margin-left: 0.35rem;
+      background: #1a3344; color: #67e8f9;
+    }
+    .badge.mesh { background: #2a1f4d; color: #c4b5fd; }
+    .badge.gps { background: #12352a; color: #6ee7b7; }
+    .badge.hub { background: #2d2d2d; color: #d4d4d4; }
+    .badge.empty { background: #2d2d2d; color: #8b9bb8; }
+    @media (max-width: 720px) {
+      .hide-sm { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>SDR / USB status</h1>
+        <p class="sub">
+          Expected devices from Equipmentlist · <span id="station">WP-KMCO</span>
+          · <span class="refresh" id="stamp">loading…</span>
+        </p>
+      </div>
+      <div class="nav">
+        <a href="/">← Station portal</a>
+        &nbsp;·&nbsp;
+        <a href="/status.html">Aggregators</a>
+        &nbsp;·&nbsp;
+        <button type="button" id="reload">Refresh now</button>
+      </div>
+    </header>
+
+    <div id="error" class="err" style="display:none"></div>
+    <div class="summary" id="summary"></div>
+    <div id="host"></div>
+    <div id="tables"></div>
+    <h2>USB tree</h2>
+    <div id="tree"></div>
+    <p class="meta" id="meta"></p>
+  </div>
+
+  <script>
+    let lastData = null;
+
+    async function load() {
+      const err = document.getElementById("error");
+      err.style.display = "none";
+      try {
+        let r = await fetch("/api/sdr", { cache: "no-store" });
+        if (!r.ok) {
+          r = await fetch(`http://${location.hostname || "127.0.0.1"}:8881/api/sdr`, { cache: "no-store" });
+        }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        lastData = await r.json();
+        render(lastData);
+      } catch (e) {
+        err.style.display = "block";
+        err.textContent =
+          "Could not load SDR API (" + e.message + "). " +
+          "Is status-api running? docker compose -f docker-compose.portal.yml up -d";
+      }
+    }
+
+    function esc(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function statusCell(st) {
+      return `<span class="status ${esc(st)}"><span class="dot ${esc(st)}"></span>${esc(st)}</span>`;
+    }
+
+    function render(data) {
+      document.getElementById("station").textContent = data.station || "WP-KMCO";
+      const when = data.generated_at ? new Date(data.generated_at) : new Date();
+      document.getElementById("stamp").textContent =
+        "updated " + when.toLocaleString() +
+        (data.elapsed_ms != null ? ` · probe ${data.elapsed_ms} ms` : "");
+
+      const s = data.summary || {};
+      document.getElementById("summary").innerHTML = ["ok", "quiet", "issue", "down", "unknown", "off"]
+        .map((k) => `<span class="pill"><span class="dot ${k}"></span>${s[k] || 0} ${k}</span>`)
+        .join("");
+
+      const h = data.host || {};
+      const notes = (h.notes || []).map((n) => `<div class="detail">${esc(n)}</div>`).join("");
+      document.getElementById("host").innerHTML = `
+        <div class="hostbox">
+          ${statusCell(h.status || "unknown")}
+          <span>Host USB</span>
+          <div class="kv mono">
+            usbfs_memory_mb=${esc(h.usbfs_memory_mb)}
+            · autosuspend=${esc(h.autosuspend)}
+            · Renesas fw ${h.renesas_firmware ? "present" : "MISSING"}
+            · live on Intel ${h.live_on_intel ?? "?"}
+            · live on StarTech ${h.live_on_startech ?? "?"}
+          </div>
+          ${notes}
+        </div>`;
+
+      const titles = data.kind_title || {};
+      const order = data.kind_order || [];
+      const byKind = {};
+      for (const it of data.items || []) {
+        (byKind[it.kind] ||= []).push(it);
+      }
+      const skipKinds = new Set(["amp", "unused"]);
+      const kinds = [
+        ...order.filter((k) => byKind[k] && !skipKinds.has(k)),
+        ...Object.keys(byKind).filter((k) => !order.includes(k) && !skipKinds.has(k)),
+      ];
+
+      let html = kinds.map((kind) => {
+        const showDecoder = kind !== "hub";
+        const rows = byKind[kind].map((it) => {
+          const usb = it.usb || {};
+          const trClass = it.status === "off" ? ' class="off"' : "";
+          const decoder = showDecoder
+            ? `<td class="hide-sm"><code>${esc(it.container || "—")}</code></td>`
+            : "";
+          return `<tr${trClass}>
+            <td>
+              <div>${esc(it.hardware)}</div>
+              <div class="detail">${esc(it.role)}</div>
+            </td>
+            <td>
+              <div class="mono">${esc(it.serial || "—")}</div>
+              <div class="mono">${esc(it.vid_pid || "")}</div>
+            </td>
+            <td>${statusCell(it.status)}</td>
+            <td class="hide-sm">
+              <div>${esc(usb.path || "—")}</div>
+              <div class="detail">${esc(it.detail || "")}</div>
+            </td>
+            ${decoder}
+          </tr>`;
+        }).join("");
+        const decoderHead = showDecoder
+          ? `<th class="hide-sm">Decoder</th>`
+          : "";
+        return `
+          <h2>${esc(titles[kind] || kind)}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Device / role</th>
+                <th>Serial</th>
+                <th>Status</th>
+                <th class="hide-sm">USB path / detail</th>
+                ${decoderHead}
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      }).join("");
+
+      if ((data.unknown || []).length) {
+        const urows = data.unknown.map((u) => `<tr>
+          <td>${esc(u.product || (u.is_hub ? "hub" : "unknown"))}</td>
+          <td><div class="mono">${esc(u.serial || "—")}</div><div class="mono">${esc(u.vid_pid)}</div></td>
+          <td>${statusCell("unknown")}</td>
+          <td class="hide-sm" colspan="2"><div class="mono">${esc(u.path || u.sys)}</div>
+            <div class="detail">Not in Equipmentlist.md — add a USB devices row if this stays</div></td>
+        </tr>`).join("");
+        html += `
+          <h2>On USB but not in Equipmentlist</h2>
+          <table>
+            <thead><tr><th>Product</th><th>Serial</th><th>Status</th><th class="hide-sm" colspan="2">Path</th></tr></thead>
+            <tbody>${urows}</tbody>
+          </table>`;
+      }
+
+      document.getElementById("tables").innerHTML = html;
+      document.getElementById("tree").innerHTML = renderTreeTable(data.tree_rows || []);
+      document.getElementById("meta").textContent =
+        "Inventory from " + (data.source || "Equipmentlist.md") +
+        ". Edit the USB devices table there when you add hardware. Auto-refresh every 15s.";
+    }
+
+    function rowspans(rows, keys) {
+      const spans = rows.map(() => ({}));
+      for (let c = 0; c < keys.length; c++) {
+        const key = keys[c];
+        let i = 0;
+        while (i < rows.length) {
+          let j = i + 1;
+          while (j < rows.length) {
+            let same = true;
+            for (let k = 0; k <= c; k++) {
+              if (rows[i][keys[k]] !== rows[j][keys[k]]) { same = false; break; }
+            }
+            if (!same) break;
+            j++;
+          }
+          spans[i][key] = j - i;
+          for (let k = i + 1; k < j; k++) spans[k][key] = 0;
+          i = j;
+        }
+      }
+      return spans;
+    }
+
+    function renderTreeTable(rows) {
+      if (!rows.length) {
+        return "<div class='detail'>No USB sysfs (is /sys mounted into status-api?)</div>";
+      }
+      const keys = ["group", "side", "port", "hub"];
+      const spans = rowspans(rows, keys);
+      const body = rows.map((row, i) => {
+        const trClass = row.status === "empty" ? ' class="off"' : "";
+        let tds = "";
+        for (const key of keys) {
+          const n = spans[i][key];
+          if (!n) continue;
+          const cls = key === "hub" ? "hubcol" : "merged";
+          tds += `<td class="${cls}" rowspan="${n}">${esc(row[key])}</td>`;
+        }
+        const name = String(row.device || "").replace(/\s+·\s+/g, " - ");
+        tds += `<td>${esc(name)}</td>`;
+        return `<tr${trClass}>${tds}</tr>`;
+      }).join("");
+      return `
+        <table class="usb-tree">
+          <thead>
+            <tr>
+              <th>Bus</th>
+              <th>Side</th>
+              <th>Port</th>
+              <th>Hub</th>
+              <th>Device</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>`;
+    }
+
+    document.getElementById("reload").addEventListener("click", load);
+    load();
+    setInterval(load, 15000);
+  </script>
+</body>
+</html>

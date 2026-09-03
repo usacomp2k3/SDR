@@ -1,0 +1,40 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# Hide dump1090 "CPU Utilization" and "Misc" (RTL gain) graphs.
+# Not useful for Airspy + READSB_NET_ONLY (gain is under Airspy graphs).
+set -euo pipefail
+
+HTML=/usr/share/graphs1090/html/index.html
+[[ -f "$HTML" ]] || exit 0
+
+python3 - <<'PY'
+from pathlib import Path
+
+path = Path("/usr/share/graphs1090/html/index.html")
+text = path.read_text()
+marker = 'dump1090-cpu-link'
+i = text.find(marker)
+if i < 0:
+    print("graphs1090: dump1090-cpu-link not found (nothing to hide)")
+    raise SystemExit(0)
+
+# Hide the nearest preceding <div class="row"> that contains CPU + Misc tiles.
+before = text[:i]
+row_pos = before.rfind('<div class="row">')
+if row_pos < 0:
+    print("graphs1090: WARNING could not find row for dump1090 CPU/Misc")
+    raise SystemExit(0)
+
+window = text[row_pos : row_pos + 40]
+if 'style="display:none"' in window:
+    print("graphs1090: dump1090 CPU/Misc already hidden")
+    raise SystemExit(0)
+
+text = (
+    text[:row_pos]
+    + '<div class="row" style="display:none">'
+    + text[row_pos + len('<div class="row">') :]
+)
+path.write_text(text)
+print("graphs1090: hid ADS-B CPU Utilization + Misc graphs")
+PY

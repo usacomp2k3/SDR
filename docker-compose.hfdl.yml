@@ -1,0 +1,51 @@
+# HFDL overlay — Airspy HF+ via docker-dumphfdl (4th mode: WP-KMCO-HFDL)
+#   bash ~/acars-hub/refresh_all_the_things.sh
+#   docker compose -f docker-compose.yml -f docker-compose.irdm.yml -f docker-compose.hfdl.yml up -d
+#
+# Plug in Airspy HF+, set HFDL_SOAPYSDR / serial in .env, then start this overlay.
+# Docs: https://github.com/sdr-enthusiasts/docker-dumphfdl
+
+services:
+  acars_router:
+    environment:
+      # Subscribe to dumphfdl ZMQ PUB (unique port so it doesn't clash with dumpvdl2:45555)
+      - AR_RECV_ZMQ_HFDL=dumphfdl:45556
+
+  dumphfdl:
+    image: ghcr.io/sdr-enthusiasts/docker-dumphfdl:latest
+    container_name: dumphfdl
+    # Parked: HFDL now comes from host RX888mk2 + ka9q-radio.
+    # Bring back the HF+ scanner with: docker compose --profile hfplus-hfdl ... up -d
+    profiles: ["hfplus-hfdl"]
+    restart: "no"
+    depends_on:
+      - acars_router
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - FEED_ID=${STATION_ID:-WP-KMCO}-HFDL
+      # Soapy device string — set HFDL_SOAPYSDR in .env once HF+ is plugged in
+      # Example: driver=airspyhf,serial=0x3b52aa80389e25ad
+      - SOAPYSDRDRIVER=${HFDL_SOAPYSDR:-driver=airspyhf}
+      - GAIN_TYPE=${HFDL_GAIN_TYPE:---gain-elements}
+      # Airspy HF+ style elements; adjust after a quick gain survey
+      - GAIN=${HFDL_GAIN:-IFGR=45,RFGR=2}
+      - SOAPYSAMPLERATE=${HFDL_SAMPLERATE:-768000}
+      # Max FFT parallelism (default is 4; host has 16 threads)
+      - DUMP_HFDL_COMMAND_EXTRA=${DUMP_HFDL_COMMAND_EXTRA:---fft-threads 12}
+      # ZMQ server → acars_router AR_RECV_ZMQ_HFDL
+      - ZMQ_MODE=server
+      - ZMQ_ENDPOINT=tcp://0.0.0.0:45556
+      - ENABLE_SYSTABLE=true
+      - ENABLE_BASESTATION=true
+      # Optional fixed freqs (space-separated Hz). Leave unset to use built-in band scanner.
+      # - FREQUENCIES=${HFDL_FREQUENCIES}
+    tmpfs:
+      - /run:exec,size=512M
+      - /var/log:size=512M
+      - /tmp:size=512M
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    volumes:
+      - /dev:/dev:ro
+      - ./hfdl-data:/opt/dumphfdl
+      - ./hfdl-scanner:/opt/scanner

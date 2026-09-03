@@ -1,0 +1,72 @@
+# WP-KMCO base: ACARS Hub + acars_router
+# Full stack:
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f docker-compose.irdm.yml \
+#     -f docker-compose.acars.yml \
+#     -f docker-compose.vdl2.yml \
+#     -f docker-compose.hfdl.yml \
+#     -f docker-compose.extras.yml \
+#     up -d
+#
+# Machine has 62GB RAM — tmpfs/history sized generously (not Pi-stingy).
+
+services:
+  acarshub:
+    image: ghcr.io/sdr-enthusiasts/docker-acarshub:latest
+    container_name: acarshub
+    restart: always
+    depends_on:
+      - acars_router
+    ports:
+      - "${ACARSHUB_PORT:-8080}:80"
+    volumes:
+      - ./acars_data:/run/acars
+    tmpfs:
+      - /database:exec,size=2G
+      - /run:exec,size=512M
+      - /var/log:size=512M
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - ENABLE_ACARS=true
+      - ENABLE_VDLM=true
+      - ENABLE_IRDM=true
+      - ENABLE_HFDL=true
+      - ACARS_CONNECTIONS=zmq://acars_router:45550
+      - VDLM_CONNECTIONS=zmq://acars_router:45555
+      - IRDM_CONNECTIONS=zmq://acars_router:45558
+      - HFDL_CONNECTIONS=zmq://acars_router:45556
+      - MIN_LOG_LEVEL=3
+      # Plenty of RAM — keep longer history
+      - DB_SAVE_DAYS=${DB_SAVE_DAYS:-30}
+      - DB_ALERT_SAVE_DAYS=${DB_ALERT_SAVE_DAYS:-180}
+      - DB_SAVEALL=true
+      - IATA_OVERRIDE=UP|UPS|United Parcel Service;GS|FTH|Mountain Aviation (Foothills);GS|EJA|ExecJet
+      - ENABLE_ADSB=true
+      - ADSB_LAT=${ADSB_LAT:-28.4294}
+      - ADSB_LON=${ADSB_LON:--81.3089}
+      - ADSB_URL=${ADSB_URL:-http://ultrafeeder/data/aircraft.json}
+
+  acars_router:
+    image: ghcr.io/sdr-enthusiasts/acars_router:latest
+    container_name: acars_router
+    restart: always
+    tmpfs:
+      - /run:exec,size=512M
+      - /var/log:size=512M
+    environment:
+      - TZ=${TZ:-America/New_York}
+      # Preserve per-mode station IDs (WP-KMCO-*)
+      - AR_ENABLE_DEDUPE=true
+      # Outbound feeds (semicolon-separated). See Architecture.md § Aggregators.
+      # Airframes + ACARS Drama + AVDelphi + FlightDeck (UDP ACARS)
+      - AR_SEND_UDP_ACARS=feed.airframes.io:5550;feedthe.acarsdrama.com:5550;data.avdelphi.com:5556;acars.tryflightdeck.com:5550
+      # ACARS Drama + AVDelphi + FlightDeck (UDP VDL2)
+      - AR_SEND_UDP_VDLM2=feedthe.acarsdrama.com:5555;data.avdelphi.com:5600;acars.tryflightdeck.com:5555
+      # adsb.lol + ADSBItalia ACARS path (TCP)
+      - AR_SEND_TCP_ACARS=feed-acars.adsb.lol:5550;feed.adsbitalia.it:31109
+      # Airframes + adsb.lol VDL2
+      - AR_SEND_TCP_VDLM2=feed.airframes.io:5553;feed-acars.adsb.lol:5552
+      # Airframes + adsb.lol HFDL
+      - AR_SEND_TCP_HFDL=feed.airframes.io:5556;feed-acars.adsb.lol:5551
+      - AR_SEND_TCP_IRDM=feed.airframes.io:5590

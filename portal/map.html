@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WP-KMCO · Unified Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" />
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: rgba(15, 23, 42, 0.92);
+      --panel-border: #243049;
+      --text: #e8eef8;
+      --muted: #8b9bb8;
+      --accent: #3d9cf0;
+      --ok: #3ecf8e;
+      --warn: #f0b429;
+      --danger: #f07178;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif; }
+    #map { position: absolute; inset: 0; background: #0a0f18; }
+
+    .topbar {
+      position: absolute; z-index: 1000; top: 12px; left: 12px; right: 12px;
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      pointer-events: none;
+    }
+    .topbar > * { pointer-events: auto; }
+
+    .brand, .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+    }
+    .brand {
+      padding: 0.65rem 0.9rem;
+      display: flex; flex-direction: column; gap: 2px;
+      min-width: 180px;
+    }
+    .brand h1 {
+      margin: 0; font-size: 0.95rem; font-weight: 650; letter-spacing: 0.02em;
+    }
+    .brand .sub { font-size: 0.75rem; color: var(--muted); }
+    .brand a { color: var(--accent); text-decoration: none; font-size: 0.75rem; }
+    .brand a:hover { text-decoration: underline; }
+
+    .controls {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      padding: 0.45rem;
+    }
+    .seg {
+      display: inline-flex; background: #0f172a; border-radius: 10px;
+      border: 1px solid var(--panel-border); overflow: hidden;
+    }
+    .seg button {
+      appearance: none; border: 0; background: transparent; color: var(--muted);
+      font: inherit; font-size: 0.78rem; font-weight: 600; padding: 0.45rem 0.7rem;
+      cursor: pointer; transition: background 0.12s, color 0.12s;
+    }
+    .seg button:hover { color: var(--text); background: rgba(61,156,240,0.12); }
+    .seg button.active {
+      background: rgba(61,156,240,0.28); color: #fff;
+    }
+    .btn {
+      appearance: none; border: 1px solid var(--panel-border); background: #0f172a;
+      color: var(--text); font: inherit; font-size: 0.78rem; font-weight: 600;
+      padding: 0.45rem 0.8rem; border-radius: 10px; cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn:disabled { opacity: 0.5; cursor: wait; }
+    .btn.primary { background: rgba(61,156,240,0.25); border-color: #3d9cf0; }
+
+    .side {
+      position: absolute; z-index: 1000; top: 78px; right: 12px;
+      width: min(300px, calc(100vw - 24px));
+      max-height: calc(100vh - 100px);
+      overflow: auto;
+      padding: 0.55rem 0.75rem 0.9rem;
+      transition: width 0.15s ease, padding 0.15s ease;
+    }
+    .side.collapsed {
+      width: auto;
+      max-height: none;
+      overflow: visible;
+      padding: 0.35rem;
+    }
+    .side.collapsed .side-body { display: none; }
+    .side-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 0.5rem;
+      margin: 0 0 0.45rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .side.collapsed .side-head {
+      margin: 0;
+      gap: 0.35rem;
+      padding: 0.2rem 0.35rem;
+    }
+    .side-head h2 {
+      margin: 0; font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); font-weight: 650;
+    }
+    .side.collapsed .side-head h2 { color: var(--text); }
+    .side-toggle {
+      appearance: none; border: 1px solid var(--panel-border);
+      background: #0f172a; color: var(--muted);
+      font: inherit; font-size: 0.72rem; font-weight: 700;
+      width: 1.65rem; height: 1.65rem; border-radius: 8px;
+      cursor: pointer; line-height: 1;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 auto;
+    }
+    .side-toggle:hover { color: var(--text); border-color: var(--accent); }
+    .side h2.section {
+      margin: 0 0 0.55rem; font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); font-weight: 650;
+    }
+    .src-list { display: flex; flex-direction: column; gap: 4px; }
+    .src {
+      display: grid; grid-template-columns: 18px 18px 1fr auto;
+      gap: 8px; align-items: center;
+      padding: 0.4rem 0.35rem; border-radius: 8px;
+      cursor: pointer; user-select: none;
+    }
+    .src:hover { background: rgba(255,255,255,0.04); }
+    .src.off { opacity: 0.45; }
+    .src input { margin: 0; accent-color: var(--accent); width: 15px; height: 15px; }
+    .swatch {
+      width: 14px; height: 14px; border-radius: 999px;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.08);
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .swatch.swatch-white {
+      box-shadow: 0 0 0 1px #0b1220, 0 0 0 2px rgba(255,255,255,0.35);
+    }
+    .swatch-icon {
+      width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .swatch-icon svg { width: 16px; height: 16px; display: block; }
+    .map-glyph {
+      background: transparent !important; border: 0 !important;
+    }
+    .map-glyph .glyph-hit {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      /* keeps a reliable pointer target even when SVG is small */
+      cursor: pointer;
+    }
+    .map-glyph svg {
+      display: block;
+      flex: 0 0 auto;
+      filter: drop-shadow(0 0 1px #000) drop-shadow(0 1px 2px rgba(0,0,0,0.85));
+      pointer-events: none;
+    }
+    .src .name { font-size: 0.82rem; font-weight: 600; }
+    .src .count {
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      font-size: 0.72rem; color: var(--muted);
+    }
+    .src .hint {
+      grid-column: 3 / -1; font-size: 0.68rem; color: var(--muted);
+      margin-top: -2px;
+    }
+
+    .opts { margin-top: 0.85rem; display: flex; flex-direction: column; gap: 0.4rem; }
+    .opt {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; color: var(--muted); cursor: pointer;
+    }
+    .opt input { accent-color: var(--accent); }
+
+    .status-line {
+      margin-top: 0.85rem; padding-top: 0.7rem; border-top: 1px solid var(--panel-border);
+      font-size: 0.72rem; color: var(--muted); line-height: 1.45;
+    }
+    .status-line strong { color: var(--text); font-weight: 600; }
+    .status-line .ok { color: var(--ok); }
+    .status-line .warn { color: var(--warn); }
+    .status-line .err { color: var(--danger); }
+
+    .legend-note {
+      margin-top: 0.55rem; font-size: 0.68rem; color: var(--muted); line-height: 1.4;
+    }
+
+    .leaflet-control-attribution {
+      background: rgba(15,23,42,0.75) !important;
+      color: #8b9bb8 !important;
+      font-size: 10px !important;
+    }
+    .leaflet-control-attribution a { color: #7ec8ff !important; }
+    .leaflet-bar a {
+      background: var(--panel) !important; color: var(--text) !important;
+      border-bottom-color: var(--panel-border) !important;
+    }
+    .leaflet-bar a:hover { background: #1a2740 !important; }
+    .maplibregl-map { background: #0c0c0c; }
+    .leaflet-container .maplibregl-ctrl-attrib { display: none; }
+
+    .dot-label {
+      background: transparent; border: 0; box-shadow: none;
+      color: #fff; font-weight: 700; font-size: 10px;
+      text-shadow: 0 1px 2px #000, 0 0 4px #000;
+      white-space: nowrap;
+    }
+
+    .loading-overlay {
+      position: absolute; z-index: 1100; inset: 0;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(11,18,32,0.35); pointer-events: none;
+    }
+    .loading-overlay.show { display: flex; }
+    .spinner {
+      background: var(--panel); border: 1px solid var(--panel-border);
+      border-radius: 12px; padding: 0.85rem 1.2rem; font-size: 0.9rem;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.4);
+    }
+
+    @media (max-width: 720px) {
+      .side {
+        top: auto; bottom: 12px; right: 12px; left: 12px; width: auto;
+        max-height: 38vh;
+      }
+      .side.collapsed {
+        left: auto; width: auto; max-height: none;
+      }
+      .topbar { right: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="loading-overlay" id="loading"><div class="spinner">Collecting coverage…</div></div>
+
+  <div class="topbar">
+    <div class="brand">
+      <h1>WP-KMCO Unified Map</h1>
+      <div class="sub">Coverage · lat/lon only · collect on load</div>
+      <a href="/">← Station portal</a>
+    </div>
+    <div class="panel controls">
+      <div class="seg" id="windows" title="Re-click active window to refresh"></div>
+      <button class="btn primary" id="btn-refresh" type="button">Refresh</button>
+      <button class="btn" id="btn-fit" type="button">Fit data</button>
+    </div>
+  </div>
+
+  <aside class="panel side" id="side-panel">
+    <div class="side-head" id="side-head" title="Collapse / expand panel" role="button" tabindex="0" aria-expanded="true" aria-controls="side-body">
+      <h2 id="side-title">Sources</h2>
+      <button type="button" class="side-toggle" id="side-toggle" aria-label="Collapse sources panel">▾</button>
+    </div>
+    <div class="side-body" id="side-body">
+      <div class="src-list" id="sources"></div>
+
+      <div class="opts">
+        <h2 class="section">Display</h2>
+        <label class="opt"><input type="checkbox" id="opt-rings" checked /> Range rings (nm)</label>
+        <label class="opt" title="Orange density field for home 1090 and mobile (when enabled)"><input type="checkbox" id="opt-heat" /> Heat density (1090 / mobile)</label>
+        <label class="opt" title="Show each aircraft as a marker. Works with heat (overlay) or alone if heat is off."><input type="checkbox" id="opt-adsb-pts" /> Individual aircraft markers</label>
+        <label class="opt" title="1h only: thin dashed path connecting samples of the same aircraft/sonde (ADS-B, UAT, ADS-C, sonde — not ACARS)"><input type="checkbox" id="opt-tracks" checked /> Tracks (1h · ADS-B/UAT/ADS-C/sonde)</label>
+        <label class="opt"><input type="checkbox" id="opt-labels" /> Labels on markers</label>
+      </div>
+
+      <div class="status-line" id="status">Loading…</div>
+      <div class="legend-note">
+        <strong>Colors:</strong> 1090 orange · 978 cyan · VHF red · VDL2 white · HFDL blue · Iridium satellite.<br/>
+        <strong>ADS-C:</strong> plotted on the protocol it arrived on (VHF / VDL2 / HFDL / Iridium). Optional combined green overlay is off by default.<br/>
+        <strong>Icons:</strong> parachute = sonde · boat = AIS · satellite = Iridium · dark-red minivan = mobile.<br/>
+        <strong>1090 / mobile:</strong> individual markers by default when heat is off; optional heat density can stack with markers.<br/>
+        <strong>Tracks (1h):</strong> dashed paths we stitch from map session samples (ADS-B/UAT/ADS-C/mobile/sonde) — not feeder traces, not ACARS.
+        Mobile source stays off until enabled in the list above.
+        Data is gathered only on load/refresh — not continuously.
+      </div>
+    </div>
+  </aside>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
+  <script>
+    const WINDOWS = ["1h", "8h", "24h", "7d", "all"];
+    const DENSE_SOURCES = new Set(["adsb-1090", "adsb-mobile"]);
+    const ICON_SOURCES = new Set(["radiosonde-400", "ais-162", "acars-iridium", "adsb-mobile"]);
+    // Dashed tracks only for these (1h); never ACARS/VDL/HFDL/AIS
+    const TRACK_SOURCES = new Set(["adsb-1090", "uat-978", "adsc", "adsb-mobile", "radiosonde-400"]);
+    const NM_TO_M = 1852;
+    // Match current ADS-B 1090 circleMarker size for every color-dot layer
+    const DOT_RADIUS = 3.5;
+    // Invisible hit radius (px) — larger than the paint so clicks are easy
+    const DOT_HIT_RADIUS = 12;
+    // All glyph markers (parachute / boat / satellite / car) share one visual size
+    const GLYPH_PX = 16;
+    // Click/touch box around glyphs (visual SVG stays GLYPH_PX, centered)
+    const GLYPH_HIT_PX = 28;
+
+    const state = {
+      window: "24h",
+      data: null,
+      enabled: {},
+      layers: {},
+      heatLayers: {},
+      trackLayers: {},
+      ringLayer: null,
+      stationMarker: null,
+      iconCache: {},
+    };
+
+    /** Inline SVG glyphs — shared viewBox + pixel size so every icon matches */
+    function glyphShell(inner, c) {
+      return `<svg viewBox="0 0 24 24" width="${GLYPH_PX}" height="${GLYPH_PX}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+    }
+    const GLYPHS = {
+      // Paths kept inside a similar visual bounding box (~4–20 in viewBox units)
+      parachute: (c) => glyphShell(`
+          <path d="M12 3C8.2 3 5.2 5.4 4.8 8.8c1.8-.2 3.3.2 4.4 1.2.7-1.8 1.7-2.8 2.8-2.8s2.1 1 2.8 2.8c1.1-1 2.6-1.4 4.4-1.2C19.8 5.4 16.8 3 12 3z" fill="${c}" stroke="#0b1220" stroke-width="1.15"/>
+          <path d="M9 10.2 L12 18.5 L15 10.2" fill="none" stroke="${c}" stroke-width="1.4" stroke-linecap="round"/>
+          <circle cx="12" cy="19.6" r="1.15" fill="${c}" stroke="#0b1220" stroke-width="0.8"/>
+        `, c),
+      boat: (c) => glyphShell(`
+          <path d="M5.5 14.5 L12 7.5 l6.5 7 H5.5z" fill="${c}" stroke="#0b1220" stroke-width="1.15" stroke-linejoin="round"/>
+          <path d="M4.5 16 h15 l-1.2 2.6 H5.7z" fill="${c}" stroke="#0b1220" stroke-width="1.1" stroke-linejoin="round"/>
+          <path d="M12 7.5 V14.5" stroke="#0b1220" stroke-width="1.15"/>
+        `, c),
+      satellite: (c) => glyphShell(`
+          <rect x="9.2" y="9.2" width="5.6" height="5.6" rx="1" fill="${c}" stroke="#0b1220" stroke-width="1.15" transform="rotate(45 12 12)"/>
+          <path d="M7 7 L9.4 9.4 M14.6 14.6 L17 17 M17 7 L14.6 9.4 M9.4 14.6 L7 17" stroke="${c}" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="17.6" cy="6.4" r="1.25" fill="${c}" stroke="#0b1220" stroke-width="0.8"/>
+        `, c),
+      // Boxy minivan silhouette (taller cabin, longer body, short nose)
+      minivan: (c) => glyphShell(`
+          <!-- body + tall greenhouse -->
+          <path d="
+            M4.2 15.2 V11.2
+            c0-.55.3-1.1.85-1.35
+            L7.2 8.4 h9.1
+            c.7 0 1.25.35 1.55.95
+            L18.6 11.1
+            c.25.45.4.95.4 1.45 v2.65
+            H4.2 z
+          " fill="${c}" stroke="#1a0505" stroke-width="1.15" stroke-linejoin="round"/>
+          <!-- short hood / front chin -->
+          <path d="M4.2 12.6 H3.35 c-.35 0-.55.25-.55.55 V15.2 H4.2 z" fill="${c}" stroke="#1a0505" stroke-width="1"/>
+          <!-- rear bumper block -->
+          <path d="M18.8 13.4 h1.1 c.3 0 .5.2.5.5 v1.3 h-1.4 z" fill="${c}" stroke="#1a0505" stroke-width="1"/>
+          <!-- windshield + side windows (dark glass) -->
+          <path d="M7.5 9.05 L6.2 11.15 h3.1 V9.05 z" fill="#1a0505" opacity="0.85"/>
+          <rect x="9.5" y="9.05" width="3.0" height="2.1" rx="0.2" fill="#1a0505" opacity="0.85"/>
+          <rect x="12.8" y="9.05" width="3.0" height="2.1" rx="0.2" fill="#1a0505" opacity="0.85"/>
+          <!-- wheels -->
+          <circle cx="7.3" cy="16.5" r="1.45" fill="#1a0505" stroke="${c}" stroke-width="0.85"/>
+          <circle cx="16.4" cy="16.5" r="1.45" fill="#1a0505" stroke="${c}" stroke-width="0.85"/>
+          <circle cx="7.3" cy="16.5" r="0.55" fill="${c}" opacity="0.7"/>
+          <circle cx="16.4" cy="16.5" r="0.55" fill="${c}" opacity="0.7"/>
+        `, c),
+    };
+    // Older "car" icon id still works
+    GLYPHS.car = GLYPHS.minivan;
+
+    function glyphSvg(kind, color) {
+      const fn = GLYPHS[kind];
+      return fn ? fn(color || "#F5F5F5") : "";
+    }
+
+    function markerIcon(kind, color) {
+      const key = `${kind}|${color}|${GLYPH_PX}|${GLYPH_HIT_PX}`;
+      if (state.iconCache[key]) return state.iconCache[key];
+      const svg = glyphSvg(kind, color);
+      const half = GLYPH_HIT_PX / 2;
+      // Large transparent hit box; small glyph centered inside (visual size unchanged)
+      const html = `<div class="glyph-hit">${svg}</div>`;
+      const icon = L.divIcon({
+        className: "map-glyph",
+        html,
+        iconSize: [GLYPH_HIT_PX, GLYPH_HIT_PX],
+        iconAnchor: [half, half],
+        popupAnchor: [0, -GLYPH_PX / 2],
+      });
+      state.iconCache[key] = icon;
+      return icon;
+    }
+
+    function bindPointPopup(layer, src, id, p) {
+      const label = p.label || p.id || id;
+      const when = p.t ? new Date(p.t * 1000).toLocaleString() : "";
+      layer.bindPopup(
+        `<strong>${esc(src.label || id)}</strong><br/>` +
+        `${esc(String(label))}<br/>` +
+        `${Number(p.lat).toFixed(4)}, ${Number(p.lon).toFixed(4)}` +
+        (when ? `<br/>${esc(when)}` : "")
+      );
+      return label;
+    }
+
+    function strokeFor(color) {
+      // Near-white markers need a dark ring so they pop on land/sea
+      const c = (color || "").toLowerCase();
+      if (c === "#f5f5f5" || c === "#fafafa" || c === "#ffffff" || c === "#e4e4e7" || c === "#d4d4d8") {
+        return "#0b1220";
+      }
+      return "#0b1220";
+    }
+
+    const map = L.map("map", {
+      zoomControl: true,
+      worldCopyJump: true,
+      preferCanvas: true,
+      zoomSnap: 0.25,
+      zoomDelta: 0.5,
+      wheelPxPerZoomLevel: 100,
+    }).setView([28.4294, -81.3089], 7);
+
+    L.maplibreGL({
+      style: "https://tiles.openfreemap.org/styles/dark",
+      attribution: '<a href="https://openfreemap.org/" target="_blank">OpenFreeMap</a> <a href="https://openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OSM</a>',
+    }).addTo(map);
+
+    // Window buttons
+    const winEl = document.getElementById("windows");
+    WINDOWS.forEach((w) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = w === "all" ? "all time" : w;
+      b.dataset.window = w;
+      if (w === state.window) b.classList.add("active");
+      b.addEventListener("click", () => {
+        const same = state.window === w;
+        state.window = w;
+        [...winEl.querySelectorAll("button")].forEach((x) =>
+          x.classList.toggle("active", x.dataset.window === w)
+        );
+        // Re-click same window = refresh (per project.md)
+        loadPoints();
+      });
+      winEl.appendChild(b);
+    });
+
+    document.getElementById("btn-refresh").addEventListener("click", () => loadPoints());
+    document.getElementById("btn-fit").addEventListener("click", () => fitData());
+    ["opt-rings", "opt-heat", "opt-adsb-pts", "opt-tracks", "opt-labels"].forEach((id) => {
+      document.getElementById(id).addEventListener("change", () => renderAll());
+    });
+
+    // Collapsible sources / display panel (persist preference)
+    const SIDE_KEY = "wpkmco-map-side-collapsed";
+    const sidePanel = document.getElementById("side-panel");
+    const sideHead = document.getElementById("side-head");
+    const sideToggle = document.getElementById("side-toggle");
+    function setSideCollapsed(collapsed) {
+      sidePanel.classList.toggle("collapsed", collapsed);
+      sideHead.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      sideToggle.textContent = collapsed ? "▸" : "▾";
+      sideToggle.setAttribute(
+        "aria-label",
+        collapsed ? "Expand sources panel" : "Collapse sources panel"
+      );
+      try {
+        localStorage.setItem(SIDE_KEY, collapsed ? "1" : "0");
+      } catch (_) { /* ignore */ }
+    }
+    function toggleSide(ev) {
+      if (ev) ev.preventDefault();
+      setSideCollapsed(!sidePanel.classList.contains("collapsed"));
+    }
+    sideHead.addEventListener("click", toggleSide);
+    sideHead.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") toggleSide(ev);
+    });
+    // Button is inside head — avoid double-toggle via stop on button only if needed
+    sideToggle.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      toggleSide(ev);
+    });
+    try {
+      setSideCollapsed(localStorage.getItem(SIDE_KEY) === "1");
+    } catch (_) {
+      setSideCollapsed(false);
+    }
+
+    function setLoading(on) {
+      document.getElementById("loading").classList.toggle("show", on);
+      document.getElementById("btn-refresh").disabled = on;
+    }
+
+    function setStatus(html) {
+      document.getElementById("status").innerHTML = html;
+    }
+
+    // Catalog defaults (mirrored from map-api; refreshed after first successful fetch)
+    // Five color-coded RF modes + icon-coded layers (shape = identity)
+    const CATALOG_DEFAULTS = {
+      "adsb-1090": { label: "ADS-B 1090", color: "#FF5A00", default_on: true, icon: "dot" },
+      "uat-978": { label: "UAT 978", color: "#00C2FF", default_on: true, icon: "dot" },
+      "adsc": { label: "ADS-C (all)", color: "#9EFA9E", default_on: false, icon: "dot", note: "Combined overlay — same points already sit on VHF / VDL2 / HFDL / Iridium" },
+      "adsb-mobile": { label: "Mobile minivan 1090/978", color: "#8B1515", default_on: false, icon: "minivan", note: "adsb.im mobile (Tailscale host from MAP_MOBILE_HOST)" },
+      "acars-vhf": { label: "ACARS VHF", color: "#FF1A4B", default_on: true, icon: "dot", note: "Includes VHF ADS-C / POS" },
+      "acars-vdl2": { label: "VDL2", color: "#F5F5F5", default_on: true, icon: "dot", note: "Includes VDL ADS-C / POS" },
+      "acars-hfdl": { label: "HFDL", color: "#1B4DFF", default_on: true, icon: "dot", note: "Includes HFDL ADS-C" },
+      "acars-iridium": { label: "Iridium ACARS", color: "#D4D4D8", default_on: true, icon: "satellite", note: "Includes Iridium ADS-C" },
+      "ais-162": { label: "AIS 162", color: "#E4E4E7", default_on: true, icon: "boat" },
+      "radiosonde-400": { label: "Radiosonde 400", color: "#FAFAFA", default_on: true, icon: "parachute" },
+      "ham-ft8": { label: "FT8", color: "#A3E635", default_on: true, icon: "dot" },
+      "ham-ft4": { label: "FT4", color: "#34D399", default_on: true, icon: "dot" },
+      "ham-wspr": { label: "WSPR", color: "#FBBF24", default_on: true, icon: "dot" },
+    };
+    Object.keys(CATALOG_DEFAULTS).forEach((id) => {
+      state.enabled[id] = !!CATALOG_DEFAULTS[id].default_on;
+    });
+
+    function enabledSourceList() {
+      return Object.keys(state.enabled).filter((id) => state.enabled[id]);
+    }
+
+    async function loadPoints() {
+      setLoading(true);
+      setStatus("Collecting from station sources…");
+      const t0 = performance.now();
+      try {
+        // Only collect enabled sources (mobile stays off the wire until toggled on)
+        const srcs = enabledSourceList().join(",") || "all";
+        const url = `/api/map/points?window=${encodeURIComponent(state.window)}&sources=${encodeURIComponent(srcs)}`;
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        // Merge into existing data so turning a layer off doesn't wipe catalog
+        if (!state.data) state.data = data;
+        else {
+          state.data.window = data.window;
+          state.data.collected_at = data.collected_at;
+          state.data.total_points = data.total_points;
+          state.data.notes = data.notes;
+          state.data.hint = data.hint;
+          state.data.station = data.station;
+          state.data.range_rings_nm = data.range_rings_nm;
+          state.data.catalog = data.catalog || state.data.catalog;
+          state.data.sources = Object.assign({}, state.data.sources || {}, data.sources || {});
+        }
+        ensureEnabledDefaults(state.data);
+        buildSourceList(state.data);
+        renderAll();
+        const ms = Math.round(performance.now() - t0);
+        const when = data.collected_at
+          ? new Date(data.collected_at).toLocaleString()
+          : "now";
+        const notes = (data.notes || []).slice(0, 4).map((n) => `<div class="warn">· ${esc(n)}</div>`).join("");
+        setStatus(
+          `<span class="ok">OK</span> · window <strong>${esc(data.window)}</strong> · ` +
+          `<strong>${data.total_points ?? 0}</strong> points · ${ms} ms<br/>` +
+          `Collected <strong>${esc(when)}</strong>` +
+          (notes ? `<br/>${notes}` : "") +
+          (data.hint ? `<br/><span style="opacity:.85">${esc(data.hint)}</span>` : "")
+        );
+      } catch (e) {
+        console.error(e);
+        setStatus(`<span class="err">Failed</span> · ${esc(String(e.message || e))}<br/>Is map-api running?`);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function ensureEnabledDefaults(data) {
+      const catalog = data.catalog || CATALOG_DEFAULTS;
+      Object.keys(catalog).forEach((id) => {
+        if (state.enabled[id] === undefined) {
+          state.enabled[id] = !!catalog[id].default_on;
+        }
+      });
+    }
+
+    function buildSourceList(data) {
+      const el = document.getElementById("sources");
+      el.innerHTML = "";
+      const catalog = data.catalog || CATALOG_DEFAULTS;
+      const order = Object.keys(catalog);
+      order.forEach((id) => {
+        const cat = catalog[id] || CATALOG_DEFAULTS[id] || {};
+        const src = (data.sources && data.sources[id]) || {};
+        const color = src.color || cat.color || "#999";
+        const icon = src.icon || cat.icon || "dot";
+        const label = src.label || cat.label || id;
+        const count = src.count ?? "—";
+        const live = src.live_count ?? 0;
+        const note = src.note || cat.note || "";
+        const on = !!state.enabled[id];
+        const collected = !!data.sources && !!data.sources[id];
+        const isWhite = /^#(f5f5f5|fafafa|ffffff|e4e4e7|d4d4d8)$/i.test(color);
+        const badge = (icon && icon !== "dot" && GLYPHS[icon])
+          ? `<span class="swatch-icon" title="${esc(icon)}">${glyphSvg(icon, color)}</span>`
+          : `<span class="swatch${isWhite ? " swatch-white" : ""}" style="background:${esc(color)}"></span>`;
+
+        const row = document.createElement("label");
+        row.className = "src" + (on ? "" : " off");
+        row.innerHTML = `
+          <input type="checkbox" ${on ? "checked" : ""} data-src="${esc(id)}" />
+          ${badge}
+          <span class="name">${esc(label)}</span>
+          <span class="count">${collected ? count : "off"}${live ? ` · live ${live}` : ""}</span>
+          ${note ? `<span class="hint">${esc(note)}</span>` : ""}
+        `;
+        row.querySelector("input").addEventListener("change", (ev) => {
+          const turningOn = ev.target.checked;
+          state.enabled[id] = turningOn;
+          row.classList.toggle("off", !turningOn);
+          // Re-collect when enabling a source we don't have yet (e.g. mobile)
+          if (turningOn && !(state.data && state.data.sources && state.data.sources[id])) {
+            loadPoints();
+          } else {
+            renderAll();
+          }
+        });
+        el.appendChild(row);
+      });
+    }
+
+    function clearDynamicLayers() {
+      Object.values(state.layers).forEach((lg) => {
+        if (map.hasLayer(lg)) map.removeLayer(lg);
+      });
+      Object.values(state.heatLayers).forEach((lg) => {
+        if (map.hasLayer(lg)) map.removeLayer(lg);
+      });
+      Object.values(state.trackLayers).forEach((lg) => {
+        if (map.hasLayer(lg)) map.removeLayer(lg);
+      });
+      state.layers = {};
+      state.heatLayers = {};
+      state.trackLayers = {};
+      if (state.ringLayer) {
+        map.removeLayer(state.ringLayer);
+        state.ringLayer = null;
+      }
+      if (state.stationMarker) {
+        map.removeLayer(state.stationMarker);
+        state.stationMarker = null;
+      }
+    }
+
+    /**
+     * Draw dashed tracks from OUR stitched samples only.
+     * Prefers API `src.tracks` (built server-side from history.db / sonde logs).
+     * Never uses feeder globe_history, tar1090 traces, or aircraft "track" heading.
+     */
+    function drawTracksForSource(sourceId, src, color) {
+      if (!TRACK_SOURCES.has(sourceId)) return null;
+      let trackList = Array.isArray(src.tracks) ? src.tracks : null;
+      // Fallback: stitch from points we already got from map-api (still our samples)
+      if (!trackList || !trackList.length) {
+        trackList = stitchTracksFromOurPoints(src.points || []);
+      }
+      if (!trackList.length) return null;
+
+      const lg = L.layerGroup();
+      let drawn = 0;
+      const MAX_TRACKS = 800;
+      for (const tr of trackList) {
+        if (drawn >= MAX_TRACKS) break;
+        const coords = tr.coords || tr.path || null;
+        if (!Array.isArray(coords) || coords.length < 2) continue;
+        // Reject anything that looks like feeder metadata we never emit
+        if (tr.built_from && tr.built_from !== "station_map_samples") continue;
+        const latlngs = [];
+        let prev = null;
+        for (const c of coords) {
+          const la = Number(Array.isArray(c) ? c[0] : c.lat);
+          const lo = Number(Array.isArray(c) ? c[1] : c.lon);
+          if (!Number.isFinite(la) || !Number.isFinite(lo)) continue;
+          if (prev && prev[0] === la && prev[1] === lo) continue;
+          latlngs.push([la, lo]);
+          prev = [la, lo];
+        }
+        if (latlngs.length < 2) continue;
+        L.polyline(latlngs, {
+          color: color,
+          weight: 1.25,
+          opacity: 0.55,
+          dashArray: "4 5",
+          lineCap: "round",
+          lineJoin: "round",
+          interactive: false,
+          className: "track-line",
+        }).addTo(lg);
+        drawn += 1;
+      }
+      return drawn > 0 ? lg : null;
+    }
+
+    function stitchTracksFromOurPoints(pts) {
+      const byId = new Map();
+      for (const p of pts) {
+        if (p.lat == null || p.lon == null || !p.id) continue;
+        const key = String(p.id);
+        if (!byId.has(key)) byId.set(key, []);
+        byId.get(key).push(p);
+      }
+      const out = [];
+      for (const [pid, group] of byId) {
+        if (group.length < 2) continue;
+        group.sort((a, b) => (Number(a.t) || 0) - (Number(b.t) || 0));
+        const coords = [];
+        let prev = null;
+        for (const p of group) {
+          const la = Number(p.lat);
+          const lo = Number(p.lon);
+          if (prev && prev[0] === la && prev[1] === lo) continue;
+          coords.push([la, lo, Number(p.t) || 0]);
+          prev = [la, lo];
+        }
+        if (coords.length < 2) continue;
+        out.push({
+          id: pid,
+          label: group[group.length - 1].label || pid,
+          coords,
+          built_from: "station_map_samples",
+        });
+      }
+      return out;
+    }
+
+    function renderAll() {
+      if (!state.data) return;
+      clearDynamicLayers();
+      const data = state.data;
+      const showRings = document.getElementById("opt-rings").checked;
+      const showHeat = document.getElementById("opt-heat").checked;
+      const showAdsbPts = document.getElementById("opt-adsb-pts").checked;
+      const showTracks = document.getElementById("opt-tracks").checked;
+      const showLabels = document.getElementById("opt-labels").checked;
+      const noThinWin = state.window === "1h" || !!(data && data.no_thin);
+
+      const st = data.station || { lat: 28.4294, lon: -81.3089, name: "WP-KMCO" };
+      state.stationMarker = L.circleMarker([st.lat, st.lon], {
+        radius: 7,
+        color: "#fff",
+        weight: 2,
+        fillColor: "#3d9cf0",
+        fillOpacity: 1,
+      }).bindPopup(`<strong>${esc(st.name)}</strong><br/>${st.lat.toFixed(5)}, ${st.lon.toFixed(5)}`);
+      state.stationMarker.addTo(map);
+
+      if (showRings) {
+        const rings = L.layerGroup();
+        const nmList = data.range_rings_nm || [50, 100, 150, 200, 250];
+        nmList.forEach((nm, i) => {
+          L.circle([st.lat, st.lon], {
+            radius: nm * NM_TO_M,
+            color: "#3d9cf0",
+            weight: 1,
+            opacity: 0.25 + (i % 2) * 0.08,
+            fill: false,
+            interactive: false,
+            dashArray: i % 2 ? "4 6" : null,
+          }).addTo(rings);
+          // label at due east
+          const dest = destPoint(st.lat, st.lon, 90, nm * NM_TO_M);
+          L.marker(dest, {
+            interactive: false,
+            icon: L.divIcon({
+              className: "dot-label",
+              html: `${nm} nm`,
+              iconSize: [48, 14],
+              iconAnchor: [0, 7],
+            }),
+          }).addTo(rings);
+        });
+        rings.addTo(map);
+        state.ringLayer = rings;
+      }
+
+      const sources = data.sources || {};
+      Object.keys(sources).forEach((id) => {
+        if (!state.enabled[id]) return;
+        const src = sources[id];
+        const color = src.color || "#ccc";
+        const iconKind = src.icon || (CATALOG_DEFAULTS[id] && CATALOG_DEFAULTS[id].icon) || "dot";
+        const useGlyph = iconKind !== "dot" && GLYPHS[iconKind];
+        // Home 1090 + mobile: density layers controlled by heat / individual-marker toggles
+        const isDense = DENSE_SOURCES.has(id) || src.mode === "heatmap";
+        const hasHeatData = !!(src.heat && src.heat.length);
+        const hasPts = !!(src.points && src.points.length);
+
+        // Heat field (independent of marker toggle)
+        if (isDense && showHeat && hasHeatData) {
+          const maxW = Math.max(...src.heat.map((h) => h[2] || 1), 1);
+          const heatData = src.heat.map((h) => [h[0], h[1], Math.min(1, (h[2] || 1) / maxW)]);
+          const heatColor = id === "adsb-mobile" ? "#B91C1C" : color;
+          const heat = L.heatLayer(heatData, {
+            radius: 18,
+            blur: 22,
+            maxZoom: 11,
+            minOpacity: 0.25,
+            gradient: heatGradient(heatColor),
+          });
+          heat.addTo(map);
+          state.heatLayers[id] = heat;
+        }
+
+        // 1h own-tracks under markers — ADS-B / UAT / mobile / sonde only (not ACARS, not feeder)
+        const hasOwnTracks = Array.isArray(src.tracks) && src.tracks.length > 0;
+        if (showTracks && noThinWin && TRACK_SOURCES.has(id) && (hasOwnTracks || hasPts)) {
+          const trackLg = drawTracksForSource(id, src, color);
+          if (trackLg) {
+            trackLg.addTo(map);
+            state.trackLayers[id] = trackLg;
+          }
+        }
+
+        // Markers:
+        //  - sparse layers (UAT, VDL, AIS, …): always when data exists
+        //  - dense (1090 / mobile): only if "Individual aircraft markers" is on,
+        //    OR heat is off / has no heat data (so something still shows)
+        let drawPts;
+        if (!isDense) {
+          drawPts = true;
+        } else if (showAdsbPts) {
+          drawPts = true; // explicit: overlay (or sole view) of each aircraft
+        } else if (!showHeat || !hasHeatData) {
+          drawPts = true; // fallback so disabling heat still leaves aircraft visible
+        } else {
+          drawPts = false; // heat-only view
+        }
+
+        if (drawPts && hasPts) {
+          const lg = L.layerGroup();
+          const pts = src.points;
+          // Cap markers for safety on long windows. 1h = draw every point (no client thin).
+          const noThin = state.window === "1h" || (state.data && state.data.no_thin);
+          const isSonde = id === "radiosonde-400";
+          let maxDraw;
+          if (noThin) {
+            maxDraw = 500000; // effectively unlimited for 1h
+          } else if (useGlyph) {
+            maxDraw = isDense ? 400 : isSonde ? 20000 : 1200;
+          } else {
+            maxDraw = isDense ? 800 : 5000;
+          }
+          const step = pts.length > maxDraw ? Math.ceil(pts.length / maxDraw) : 1;
+          // Pop slightly on heat so orange dots aren't lost in the orange field
+          const onHeat = isDense && showHeat && hasHeatData;
+          const paintRadius = onHeat ? DOT_RADIUS + 0.5 : DOT_RADIUS;
+          const paintWeight = onHeat ? 1.6 : 1.2;
+          const paintStroke = onHeat ? "#ffffff" : strokeFor(color);
+
+          for (let i = 0; i < pts.length; i += step) {
+            const p = pts[i];
+            if (p.lat == null || p.lon == null) continue;
+            if (useGlyph) {
+              // Mobile cars, etc. — only drawn when drawPts is true (respects checkbox)
+              const m = L.marker([p.lat, p.lon], {
+                icon: markerIcon(iconKind, color),
+                keyboard: false,
+                zIndexOffset: onHeat ? 400 : 200,
+              });
+              const label = bindPointPopup(m, src, id, p);
+              if (showLabels && label) {
+                m.bindTooltip(String(label), {
+                  permanent: true,
+                  direction: "right",
+                  className: "dot-label",
+                  offset: [10, 0],
+                });
+              }
+              m.addTo(lg);
+            } else {
+              // Visible paint (small) + invisible hit target (larger) — same lat/lon
+              const visual = L.circleMarker([p.lat, p.lon], {
+                radius: paintRadius,
+                color: paintStroke,
+                weight: paintWeight,
+                fillColor: color,
+                fillOpacity: 0.95,
+                opacity: 1,
+                interactive: false,
+              });
+              const hit = L.circleMarker([p.lat, p.lon], {
+                radius: DOT_HIT_RADIUS,
+                color: "#000",
+                weight: 0,
+                fillColor: "#000",
+                fillOpacity: 0,
+                opacity: 0,
+                interactive: true,
+              });
+              const label = bindPointPopup(hit, src, id, p);
+              if (showLabels && label) {
+                hit.bindTooltip(String(label), {
+                  permanent: true,
+                  direction: "right",
+                  className: "dot-label",
+                  offset: [10, 0],
+                });
+              }
+              visual.addTo(lg);
+              hit.addTo(lg);
+            }
+          }
+          lg.addTo(map);
+          state.layers[id] = lg;
+        }
+      });
+    }
+
+    function heatGradient(hex) {
+      // Fade from transparent-ish through the source color to white-hot
+      return {
+        0.0: hexToRgba(hex, 0.0),
+        0.25: hexToRgba(hex, 0.45),
+        0.55: hex,
+        0.85: lighten(hex, 0.25),
+        1.0: "#ffffff",
+      };
+    }
+
+    function hexToRgba(hex, a) {
+      const c = hex.replace("#", "");
+      const n = parseInt(c.length === 3 ? c.split("").map((x) => x + x).join("") : c, 16);
+      const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+      return `rgba(${r},${g},${b},${a})`;
+    }
+
+    function lighten(hex, amt) {
+      const c = hex.replace("#", "");
+      const n = parseInt(c.length === 3 ? c.split("").map((x) => x + x).join("") : c, 16);
+      let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+      r = Math.min(255, Math.round(r + (255 - r) * amt));
+      g = Math.min(255, Math.round(g + (255 - g) * amt));
+      b = Math.min(255, Math.round(b + (255 - b) * amt));
+      return `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
+    }
+
+    function destPoint(lat, lon, bearingDeg, distM) {
+      const R = 6371000;
+      const brng = (bearingDeg * Math.PI) / 180;
+      const φ1 = (lat * Math.PI) / 180;
+      const λ1 = (lon * Math.PI) / 180;
+      const δ = distM / R;
+      const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(brng));
+      const λ2 =
+        λ1 +
+        Math.atan2(
+          Math.sin(brng) * Math.sin(δ) * Math.cos(φ1),
+          Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2)
+        );
+      return [(φ2 * 180) / Math.PI, (λ2 * 180) / Math.PI];
+    }
+
+    function fitData() {
+      if (!state.data) return;
+      const bounds = [];
+      const st = state.data.station;
+      if (st) bounds.push([st.lat, st.lon]);
+      Object.keys(state.data.sources || {}).forEach((id) => {
+        if (!state.enabled[id]) return;
+        const src = state.data.sources[id];
+        (src.points || []).slice(0, 500).forEach((p) => {
+          if (p.lat != null && p.lon != null) bounds.push([p.lat, p.lon]);
+        });
+        (src.heat || []).slice(0, 200).forEach((h) => bounds.push([h[0], h[1]]));
+      });
+      if (bounds.length > 1) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
+      }
+    }
+
+    function esc(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    // First load
+    loadPoints();
+  </script>
+</body>
+</html>

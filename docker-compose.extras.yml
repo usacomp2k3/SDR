@@ -1,0 +1,71 @@
+# Non-Hub extras: AIS (RTL 162) + radiosonde (RTL 402)
+#   docker compose -f docker-compose.yml -f docker-compose.extras.yml up -d
+
+services:
+  shipfeeder:
+    image: ghcr.io/sdr-enthusiasts/docker-shipfeeder:latest
+    container_name: shipfeeder
+    hostname: shipfeeder
+    restart: always
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - STATION_NAME=WP-KMCO-AIS
+      - FEEDER_LAT=${ADSB_LAT:-28.4294}
+      - FEEDER_LONG=${ADSB_LON:--81.3089}
+      - SITESHOW=on
+      - REALTIME=on
+      # AIS-catcher v0.70 hard-caps HISTORY at 43200s (12h). 7d (604800) crash-loops.
+      - STATION_HISTORY=43200
+      # Persist aiscatcher.bin hourly so a recreate does not wipe plot stats
+      - BACKUP_INTERVAL=60
+      - RTLSDR_DEVICE_SERIAL=${AIS_RTL_SERIAL:-162}
+      # auto = hardware AGC when supported
+      - RTLSDR_DEVICE_GAIN=${AIS_GAIN:-auto}
+      - RTLSDR_DEVICE_RTLAGC=on
+      # -a tuner bandwidth (Hz). Default 192K; sample rate is device default (~1536k).
+      - RTLSDR_DEVICE_BANDWIDTH=${AIS_BANDWIDTH:-192K}
+      # External bias injectors only
+      - RTLSDR_DEVICE_BIASTEE=
+      - AISCATCHER_DECODER_AFC_WIDE=on
+      # GitHub v4 plugins call addTargetcardItem; this UI only has addShipcardItem
+      - PLUGIN_UPDATE_INTERVAL=off
+      # No-key / no-port aggregators + keyed feeds from .env when set
+      - AIRFRAMES_STATION_ID=${AIRFRAMES_AIS_ID:-WP-KMCO-AIS}
+      - AISCATCHER_SHAREDATA=true
+      - BOATBEACON_SHAREDATA=true
+      - SHIPFINDER_SHAREDATA=true
+      - MARINETRAFFIC_UDP_PORT=${MARINETRAFFIC_UDP_PORT:-}
+      - MYSHIPTRACKING_UDP_PORT=${MYSHIPTRACKING_UDP_PORT:-}
+      - SHIPXPLORER_UDP_PORT=${SHIPXPLORER_UDP_PORT:-}
+      - VESSELFINDER_UDP_PORT=${VESSELFINDER_UDP_PORT:-}
+      - AISHUB_UDP_PORT=${AISHUB_UDP_PORT:-}
+      - SDRMAP_STATION_ID=${FEEDER_SDRMAP_USERNAME:-}
+      - "SDRMAP_PASSWORD=${FEEDER_SDRMAP_PASSWORD:-}"
+      - VERBOSE_LOGGING=1
+    ports:
+      - "${AIS_PORT:-8090}:80"
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    tmpfs:
+      - /tmp:size=512M
+    volumes:
+      - /dev:/dev:rw
+      - ./ais-data:/data
+      - /etc/localtime:/etc/localtime:ro
+
+  radiosonde_auto_rx:
+    image: ghcr.io/projecthorus/radiosonde_auto_rx:latest
+    container_name: radiosonde_auto_rx
+    restart: always
+    # host network so UI is on :5000 of the machine
+    network_mode: host
+    environment:
+      - TZ=${TZ:-America/New_York}
+    # Full USB access (devices: /dev/bus/usb alone is not enough to claim RTLs)
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    volumes:
+      - /dev:/dev:rw
+      - ./radiosonde/station.cfg:/opt/auto_rx/station.cfg:ro
+      - ./radiosonde/log:/opt/auto_rx/log
+      - /etc/localtime:/etc/localtime:ro

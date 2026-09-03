@@ -1,0 +1,67 @@
+# Station portal — index of UIs + aggregator status + SDR/USB + unified map
+#   docker compose -f docker-compose.portal.yml up -d
+# Open: http://127.0.0.1:8880/           (portal)
+#       http://127.0.0.1:8880/status.html (aggregators)
+#       http://127.0.0.1:8880/sdr.html    (SDR / USB tree)
+#       http://127.0.0.1:8880/map.html    (unified coverage map)
+# API:  http://127.0.0.1:8881/api/status (also proxied as /api/status)
+#       http://127.0.0.1:8881/api/sdr    (also proxied as /api/sdr)
+#       http://127.0.0.1:8882/api/map/points (also proxied as /api/map/)
+
+services:
+  status-api:
+    image: python:3.12-alpine
+    container_name: station-status-api
+    restart: always
+    network_mode: host
+    pid: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /lib/firmware/renesas_usb_fw.mem:/lib/firmware/renesas_usb_fw.mem:ro
+      - ./portal/status-api:/app:ro
+      - ./Equipmentlist.md:/data/Equipmentlist.md:ro
+    command: ["python", "/app/app.py"]
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - SDR_EQUIPMENT_LIST=/data/Equipmentlist.md
+
+  map-api:
+    image: python:3.12-alpine
+    container_name: station-map-api
+    restart: always
+    network_mode: host
+    volumes:
+      - ./portal/map-api/app.py:/app/app.py:ro
+      - ./acars_data:/data/acars:ro
+      - ./radiosonde/log:/data/sonde:ro
+      - ./portal/map-data:/data/map
+      - ./rx888/run/ham:/data/ham:ro
+      - ./irdm-logs:/data/irdm:ro
+    command: ["python", "/app/app.py"]
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - MAP_STATION_LAT=${ADSB_LAT}
+      - MAP_STATION_LON=${ADSB_LON}
+      - MAP_STATION_NAME=WP-KMCO / WinterPark
+      - MAP_ACARS_DB=/data/acars/messages.db
+      - MAP_SONDE_LOG=/data/sonde
+      - MAP_HISTORY_DB=/data/map/history.db
+      - MAP_HAM_DB=/data/ham/spots.db
+      - MAP_IRDM_POS=/data/irdm/irdm-pos.jsonl
+      - MAP_MOBILE_HOST=${MAP_MOBILE_HOST:-}
+
+  portal:
+    image: nginx:alpine
+    container_name: station-portal
+    restart: always
+    depends_on:
+      - status-api
+      - map-api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8880:80"
+    volumes:
+      - ./portal:/usr/share/nginx/html:ro
+      - ./portal/nginx.conf:/etc/nginx/conf.d/default.conf:ro

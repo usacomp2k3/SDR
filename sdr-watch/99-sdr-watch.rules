@@ -1,0 +1,7 @@
+# When a station radio re-enumerates, run the SDR watchdog (non-blocking).
+# Inventory / decoder map is Equipmentlist.md — this only triggers a scan.
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="1d50", ATTR{idProduct}=="60a1", RUN+="/bin/systemctl --no-block start sdr-watch.service"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="2838", RUN+="/bin/systemctl --no-block start sdr-watch.service"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="04b4", ATTR{idProduct}=="00f1", RUN+="/bin/systemctl --no-block start sdr-watch.service"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="04b4", ATTR{idProduct}=="00f3", RUN+="/bin/systemctl --no-block start sdr-watch.service"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="03eb", ATTR{idProduct}=="800c", RUN+="/bin/systemctl --no-block start sdr-watch.service"

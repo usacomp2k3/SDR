@@ -1,0 +1,17 @@
+[Unit]
+Description=Set USBFS buffer unlimited (multi-SDR)
+Documentation=file:///home/station/acars-hub/Architecture.md
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target docker.service
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'echo 0 > /sys/module/usbcore/parameters/usbfs_memory_mb'
+ExecStart=/sbin/ip link set lo multicast on
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=docker.service

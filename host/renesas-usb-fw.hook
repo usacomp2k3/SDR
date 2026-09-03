@@ -1,0 +1,16 @@
+#!/bin/sh
+# Copy Renesas uPD720202 firmware into the initramfs so xhci-pci-renesas
+# can load it at PCI bind (StarTech PEXUSB3S44V).
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case $1 in
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+. /usr/share/initramfs-tools/hook-functions
+if [ -f /lib/firmware/renesas_usb_fw.mem ]; then
+	mkdir -p "${DESTDIR}/lib/firmware"
+	cp -a /lib/firmware/renesas_usb_fw.mem "${DESTDIR}/lib/firmware/"
+fi

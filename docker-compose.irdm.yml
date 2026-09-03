@@ -1,0 +1,54 @@
+# Iridium overlay — Airspy R2 via gr-iridium + iridium-toolkit
+#   bash ~/acars-hub/refresh_all_the_things.sh
+#   docker compose -f docker-compose.yml -f docker-compose.irdm.yml up -d
+#
+# Free the Airspy first (parks XNG). XNG files stay on disk for later.
+
+services:
+  irdm:
+    image: ghcr.io/jkrasuk/docker-gr-iridium-toolkit:latest
+    container_name: irdm
+    hostname: irdm
+    restart: always
+    tty: true
+    depends_on:
+      - acars_router
+    ports:
+      - "${IRDM_BEAM_MAP_PORT:-8888}:8888"   # beam map
+      - "${IRDM_MT_MAP_PORT:-8889}:8889"     # MT map
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    volumes:
+      - /dev:/dev:rw
+      - ./irdm.conf:/opt/irdm.conf:ro
+      - ./irdm-logs:/opt/logs
+      # Bookworm-linked libacars (irdm/build-libacars.sh). Host .so is ICU 74; do not mount it.
+      - ./irdm/lib/libacars-2.so:/usr/local/lib/libacars-2.so:ro
+      - ./irdm/lib/libacars-2.so.2:/usr/local/lib/libacars-2.so.2:ro
+      - ./irdm/iridium-reassembler:/etc/s6-overlay/scripts/iridium-reassembler:ro
+      - ./irdm/irdm-to-hub.py:/opt/irdm-to-hub.py:ro
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - STATION_ID=${STATION_ID:-WP-KMCO}-IRDM
+      - LD_LIBRARY_PATH=/usr/local/lib
+      # jkrasuk image ignores OUTPUT_SERVER; only ACARS_ADDITIONAL_OUTPUTS is used.
+      # iridium-acars-to-airframes.py also always TCP-feeds feed.airframes.io:5590 by default.
+      # Send a copy to acars_router so ACARS Hub can display IRDM (UDP 5558).
+      # Hub copy is flattened by irdm-to-hub.py (not this env). Airframes is still default TCP.
+      - ACARS_ADDITIONAL_OUTPUTS=
+      # 10 MS/s requires D such that Fs/D is a multiple of 250 kHz → D=8 max.
+      # -d 16 more sensitive than default 18; -q 1000 larger burst queue.
+      - EXTRACTOR_ARGS=${IRDM_EXTRACTOR_ARGS:- -D 8 --multi-frame -d 16 -q 1000 -b 2000}
+      - PARSER_ARGS=${IRDM_PARSER_ARGS:- --harder --uw-ec --stats}
+      - LOG_EXTRACTOR_STATS=true
+      - ENABLE_BEAM_MAP=true
+      - ENABLE_MTPOS_MAP=true
+    # Room for logs / runtime (62GB host RAM)
+    tmpfs:
+      - /run:exec,size=512M
+      - /tmp:size=1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"

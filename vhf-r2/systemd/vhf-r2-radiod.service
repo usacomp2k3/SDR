@@ -1,0 +1,22 @@
+[Unit]
+Description=WP-KMCO Airspy R2 ka9q-radio (VHF ACARS+VDL2)
+Documentation=file:///home/station/acars-hub/vhf-r2/README.md
+After=network-online.target usbfs-memory.service docker.service lo-multicast.service
+Wants=network-online.target usbfs-memory.service lo-multicast.service docker.service
+
+[Service]
+Type=simple
+User=station
+Group=station
+WorkingDirectory=/home/station/acars-hub/vhf-r2
+Environment=LD_LIBRARY_PATH=/home/station/acars-hub/rx888/opt/lib
+Environment=PATH=/home/station/acars-hub/rx888/opt/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash /home/station/acars-hub/vhf-r2/run-radiod.sh
+Restart=always
+RestartSec=5
+Nice=-5
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

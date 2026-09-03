@@ -1,0 +1,14 @@
+[Unit]
+Description=Disable USB autosuspend, ASPM, and D3cold (StarTech + onboard)
+Documentation=file:///home/station/acars-hub/Architecture.md
+After=local-fs.target
+Before=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh /home/station/acars-hub/host/renesas-usb-power.sh
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=docker.service

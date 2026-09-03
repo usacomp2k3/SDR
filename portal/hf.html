@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WP-KMCO HF skimmer</title>
+  <style>
+    :root {
+      --bg: #0b1220; --card: #141e30; --border: #243049;
+      --text: #e8eef8; --muted: #8b9bb8; --accent: #3d9cf0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.1rem 3rem; }
+    a { color: var(--accent); }
+    h1 { margin: 0 0 .3rem; font-size: 1.45rem; }
+    .sub { color: var(--muted); margin-bottom: 1.2rem; font-size: .92rem; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .7rem; margin-bottom: 1.2rem; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .85rem 1rem; }
+    .card h2 { margin: 0 0 .35rem; font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .card .n { font-size: 1.6rem; font-weight: 650; }
+    .card .s { font-size: .8rem; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    th, td { text-align: left; padding: .35rem .45rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: .75rem; text-transform: uppercase; }
+    .m-ft8 { color: #A3E635; }
+    .m-ft4 { color: #34D399; }
+    .m-wspr { color: #FBBF24; }
+    .mono { font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>HF ham skimmer</h1>
+    <p class="sub">
+      Same RX888mk2 as HFDL · FT8 / FT4 / WSPR · reporter
+      <span class="mono">KQ4ORY</span> · <span class="mono">EL98ho</span> · MLA30+
+      · <a href="/map.html">coverage map</a>
+      · <a href="https://pskreporter.info/pskmap.html" target="_blank" rel="noopener">PSK Reporter</a>
+    </p>
+    <div class="cards" id="cards"></div>
+    <table>
+      <thead>
+        <tr><th>UTC</th><th>Mode</th><th>MHz</th><th>SNR</th><th>Call</th><th>Grid</th><th>Message</th></tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="7" class="sub">Loading…</td></tr></tbody>
+    </table>
+  </div>
+  <script>
+    function ago(t) {
+      if (!t) return "—";
+      const s = Math.max(0, Date.now()/1000 - t);
+      if (s < 90) return Math.round(s) + "s ago";
+      if (s < 3600) return Math.round(s/60) + "m ago";
+      return Math.round(s/3600) + "h ago";
+    }
+    function mhz(hz) {
+      if (!hz) return "";
+      return (hz/1e6).toFixed(hz > 1e7 ? 3 : 4);
+    }
+    async function load() {
+      const r = await fetch("/api/map/ham?limit=120", { cache: "no-store" });
+      const d = await r.json();
+      const cards = document.getElementById("cards");
+      const modes = d.modes || {};
+      cards.innerHTML = ["ft8","ft4","wspr"].map((m) => {
+        const x = modes[m] || {};
+        return `<div class="card">
+          <h2 class="m-${m}">${m.toUpperCase()}</h2>
+          <div class="n">${x.last_hour ?? 0}</div>
+          <div class="s">${x.last_24h ?? 0} in 24h · last ${ago(x.last_t)}</div>
+        </div>`;
+      }).join("");
+      const tb = document.getElementById("rows");
+      const rows = d.recent || [];
+      if (!rows.length) {
+        tb.innerHTML = `<tr><td colspan="7" class="sub">No spots yet — waiting for the next FT8/FT4/WSPR cycle.</td></tr>`;
+        return;
+      }
+      tb.innerHTML = rows.map((s) => `<tr>
+        <td class="mono">${s.t ? new Date(s.t*1000).toISOString().slice(11,19) : ""}</td>
+        <td class="m-${s.mode}">${(s.mode||"").toUpperCase()}</td>
+        <td class="mono">${mhz(s.freq_hz)}</td>
+        <td>${s.snr ?? ""}</td>
+        <td class="mono">${s.callsign || ""}</td>
+        <td class="mono">${s.grid || ""}</td>
+        <td>${(s.msg || "").replace(/</g,"&lt;")}</td>
+      </tr>`).join("");
+    }
+    load();
+    setInterval(load, 15000);
+  </script>
+</body>
+</html>
